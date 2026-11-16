@@ -1941,7 +1941,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
             return true;
         }
         if (root == null) return false;
-        if (r.Output is { } owned && !File.Exists(Path.Combine(root, "Proteus", RefitModService.DisplayKeyFile)))
+        if (r.Output is { } owned && RefitModService.NeedsLabelMigration(root))
             await OnFramework(() =>
             {
                 refitMods.RestoreLegacyLabel(root, owned.Item, owned.Layer,

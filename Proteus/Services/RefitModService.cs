@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -323,32 +324,51 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
         }
     }
 
-    // Migrate only an untouched legacy label. Players can rename and organize their own copies.
+    internal static bool NeedsLabelMigration(string root)
+        => !File.Exists(DisplayKeyPath(root)) || File.Exists(DisplayKeyPath(root) + ".pending");
+
+    // Only migrate names and paths assigned by the earlier generator.
     internal void RestoreLegacyLabel(string root, string item, string layer, string display, string folder)
     {
-        if (File.Exists(DisplayKeyPath(root))) return;
+        if (!NeedsLabelMigration(root)) return;
         string dir = Path.GetFileName(root);
-        string? old = NameOf(root);
-        if (old != NameFor(item, layer) || DirFor(old) != dir) return;
-        bool atRoot = penumbra.IsDefaultListPath(dir);
-        lock (ModManifestLock.Gate)
+        string key = DisplayKeyPath(root);
+        string pendingFile = key + ".pending";
+        string? old = Enumerable.Range(1, MaxNames).Select(n => Numbered(NameFor(item, layer), n))
+            .FirstOrDefault(name => DirFor(name) == dir);
+        if (old == null) return;
+        string? current = NameOf(root);
+        if (current != old && (!File.Exists(pendingFile) || current != display)) return;
+        string previousFolder = "Proteus/" + folder.Split('/')[^1];
+        bool? move = penumbra.ShouldMoveLegacyPath(dir, ListPath(previousFolder, old)!);
+        if (move == null) return;
+        if (current == old)
         {
-            string path = Path.Combine(root, PenumbraModMeta.MetaFile);
-            var meta = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path));
-            if (meta == null || (string?)meta["Name"] != old) return;
-            Directory.CreateDirectory(Path.Combine(root, "Proteus"));
-            File.WriteAllText(DisplayKeyPath(root), old);
-            meta["Name"] = display;
-            PenumbraModMeta.AtomicWrite(path, meta.ToJsonString());
+            lock (ModManifestLock.Gate)
+            {
+                string path = Path.Combine(root, PenumbraModMeta.MetaFile);
+                var meta = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path));
+                if (meta == null || (string?)meta["Name"] != old) return;
+                Directory.CreateDirectory(Path.Combine(root, "Proteus"));
+                File.WriteAllText(pendingFile, old);
+                File.WriteAllText(key, old);
+                meta["Name"] = display;
+                PenumbraModMeta.AtomicWrite(path, meta.ToJsonString());
+            }
         }
-        penumbra.ReloadModDirectory(dir);
-        if (atRoot && ListPath(folder, display) is { } destination)
+        if (penumbra.ReloadModDirectory(dir) != PenumbraApiEc.Success) return;
+        if (move.Value && ListPath(folder, display) is { } destination)
         {
             var ec = penumbra.SetModListPath(dir, destination);
             if (ec == PenumbraApiEc.PathRenameFailed)
                 ec = penumbra.SetModListPath(dir, destination + " (" + dir[YabOutput.Prefix.Length..] + ")");
-            if (ec != PenumbraApiEc.Success) log.Warning("[Proteus] could not file {0} under {1}: {2}", dir, folder, ec);
+            if (ec != PenumbraApiEc.Success)
+            {
+                log.Warning("[Proteus] could not file {0} under {1}: {2}", dir, folder, ec);
+                return;
+            }
         }
+        File.Delete(pendingFile);
     }
 
     /// <summary>"Coat — Neolithe", then "Coat — Neolithe (2)": the first name is never numbered.</summary>

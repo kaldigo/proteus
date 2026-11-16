@@ -174,14 +174,18 @@ public sealed partial class PartsPanel
         try
         {
             string? modsRoot = penumbra.GetModDirectory();
+            string folder = priority.HasValue ? RefitModService.OwnModsFolder + "/" + YabOutput.Manual : RefitModService.OwnModsFolder;
+            string? existing = modsRoot == null ? null : RefitModService.Find(modsRoot, piece.ItemName, RefitModService.EditQualifier);
+            if (existing != null && displayName != null)
+                refitMods.RestoreLegacyLabel(existing, piece.ItemName, RefitModService.EditQualifier, displayName, folder);
             outcome = VanillaEditCopy.Make(
                 piece.GamePath, brushBase,
-                find: () => modsRoot == null ? null : RefitModService.Find(modsRoot, piece.ItemName, RefitModService.EditQualifier),
+                find: () => existing,
                 switchedOn: dir => penumbra.GetPlayerCollectionId() is { } coll
                                    && penumbra.GetModSettings(coll, dir) is { } s ? s.Enabled : null,
                 ensure: fill => refitMods.Ensure(piece.ItemName, RefitModService.EditQualifier, fill,
                                                  description: string.Format(ps.VanillaModDescriptionFmt, piece.ItemName),
-                                                 folder: priority.HasValue ? RefitModService.OwnModsFolder + "/" + YabOutput.Manual : RefitModService.OwnModsFolder,
+                                                 folder: folder,
                                                  priority: priority, displayName: displayName),
                 firstWrite: write);
         }

@@ -732,15 +732,15 @@ public class PenumbraBridge : IDisposable
         catch (Exception ex) { log.Error(ex, "DeleteMod failed"); return PenumbraApiEc.UnknownError; }
     }
 
-    internal bool IsDefaultListPath(string dir)
+    internal bool? ShouldMoveLegacyPath(string dir, string previousPath)
     {
-        if (!IsAvailable) return false;
+        if (!IsAvailable) return null;
         try
         {
-            var (ec, _, fullDefault, _) = getModPath.Invoke(dir);
-            return ec == PenumbraApiEc.Success && fullDefault;
+            var (ec, path, fullDefault, _) = getModPath.Invoke(dir);
+            return ec == PenumbraApiEc.Success ? fullDefault || path == previousPath : null;
         }
-        catch (Exception ex) { log.Warning(ex, "GetModPath failed for {0}", dir); return false; }
+        catch (Exception ex) { log.Warning(ex, "GetModPath failed for {0}", dir); return null; }
     }
 
     /// <summary>File a mod in Penumbra's mod list: <paramref name="path"/> is folders and the mod's name joined by
