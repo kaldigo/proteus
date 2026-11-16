@@ -11,6 +11,25 @@ namespace Proteus.Tests;
 public class YabFitTests
 {
     [Fact]
+    public void Source_check_peels_stacked_refits_and_remembers_a_disappearing_racial_path()
+    {
+        var checks = new FitSourceChecks();
+        const string wearer = "c0201e9137_glv", fallback = "c0101e9137_glv";
+        checks.Revealed(wearer, "resize", 1, 1500);
+        Assert.True(checks.NeedsCheck(wearer, 1));
+        Assert.False(checks.WasRevealed(wearer, "base", 1, out _));
+        checks.Revealed(wearer, "base", 1, 1600);
+        Assert.True(checks.WasRevealed(wearer, "resize", 1, out long until));
+        Assert.Equal(1500L, until);
+        Assert.True(checks.NeedsCheck(fallback, 1));
+        checks.Checked(fallback, 1);
+        checks.Settled();
+        Assert.False(checks.NeedsCheck(wearer, 1));
+        Assert.False(checks.NeedsCheck(fallback, 1));
+        Assert.True(checks.NeedsCheck(wearer, 2));
+    }
+
+    [Fact]
     public void Existing_fit_only_needs_applying_when_the_collection_would_change()
     {
         var settings = new Proteus.Interop.PenumbraBridge.ModSettingsSnapshot(true, -1,

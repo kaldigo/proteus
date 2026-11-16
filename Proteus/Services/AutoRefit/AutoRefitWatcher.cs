@@ -331,8 +331,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
     }
 
     private long sourceRevision;
-    private readonly Dictionary<string, long> checkedSources = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, long> revealing = new(StringComparer.OrdinalIgnoreCase);
+    private readonly FitSourceChecks sourceChecks = new();
     private readonly HashSet<string> revealedSlots = new(StringComparer.Ordinal);
 
     private void InvalidateFitSources(string dir)
@@ -838,8 +837,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         if (seenIn != collection.Id)
         {
             seenIn = collection.Id;
-            checkedSources.Clear();
-            revealing.Clear();
+            sourceChecks.Clear();
             revealedSlots.Clear();
             lastSeen = null;
         }
@@ -928,8 +926,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         foreach (var (suffix, gamePath) in DrawnModelPaths.EquippedPartModelsFromModels(models)
                      .Concat(DrawnModelPaths.EquippedAccessoryGarmentModelsFromModels(models)))
         {
-            bool checkedThisRevision = checkedSources.TryGetValue(gamePath, out long done) && done == revision;
-            if (checkedThisRevision && revealing.Count == 0) continue;
+            if (!sourceChecks.NeedsCheck(gamePath, revision)) continue;
             string? resolved = penumbra.ResolvePlayer(gamePath);
             if (resolved != null && Path.IsPathRooted(resolved)
                 && HatCompatService.InMods(resolved, modsRoot, out string root, out string rel)
@@ -937,10 +934,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
                 && YabOutput.Read(root, rel, gamePath) != null)
             {
                 string dir = Path.GetFileName(root);
-                string key = gamePath + "|" + dir;
-                if (!revealing.TryGetValue(key, out long until))
+                if (!sourceChecks.WasRevealed(gamePath, dir, revision, out long until))
                 {
-                    if (checkedThisRevision) continue;
                     var held = penumbra.GetModSettingsSnapshot(collection, dir);
                     if (held is { Enabled: true, Temporary: false }
                         && penumbra.SetModOption(collection, dir, "Fit", [BodyRetargetWriter.OriginalOption])
@@ -950,8 +945,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                         config.Save();
                         // Original can fall back to a different race path. The path hidden here
                         // may disappear on the next walk and only return after the fit is restored.
-                        checkedSources[gamePath] = revision;
-                        revealing[key] = Environment.TickCount64 + 1500;
+                        sourceChecks.Revealed(gamePath, dir, revision, Environment.TickCount64 + 1500);
                         revealedSlots.Add("_" + suffix);
                         waiting = true;
                         continue;
@@ -963,10 +957,10 @@ public sealed partial class AutoRefitWatcher : IDisposable
                     continue;
                 }
             }
-            checkedSources[gamePath] = revision;
+            sourceChecks.Checked(gamePath, revision);
         }
         if (waiting) RequestWalkIn(EquipSettleMs);
-        else revealing.Clear();
+        else sourceChecks.Settled();
         return waiting;
     }
 
