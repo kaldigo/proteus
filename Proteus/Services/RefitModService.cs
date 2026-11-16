@@ -90,6 +90,11 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
             : null;
     }
 
+    internal const string DisplayKeyFile = "fit-display-key.txt";
+
+    private static string DisplayKeyPath(string root)
+        => Path.Combine(root, "Proteus", DisplayKeyFile);
+
     /// <summary>
     /// The root of the mod already holding this item's refits, or null. No IPC and no writing, so the panel may ask
     /// every time the body changes.
@@ -110,6 +115,9 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
             string root = Path.Combine(modsRoot, dir);
             if (!Directory.Exists(root)) return null;                 // nothing beyond here either: they are made in order
             if (string.Equals(NameOf(root), name, StringComparison.Ordinal)) return root;
+            if (itemName.StartsWith(YabOutput.Prefix, StringComparison.Ordinal) && PenumbraModMeta.HasReadableManifest(root)
+                && File.Exists(DisplayKeyPath(root))
+                && string.Equals(File.ReadAllText(DisplayKeyPath(root)), name, StringComparison.Ordinal)) return root;
         }
         return null;
     }
@@ -132,26 +140,31 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
     /// stays wherever the player has since put it.
     /// </param>
     internal Result Ensure(string itemName, string bodyName, Action<string>? fill = null, string? description = null,
-                           string? folder = null, int? priority = null)
+                           string? folder = null, int? priority = null, string? displayName = null)
     {
         if (penumbra.GetModDirectory() is not { Length: > 0 } modsRoot)
             return new(false, "", "", ProteusLoc.Localize("Service.NoPenumbraDir", "Penumbra's mod directory isn't available."));
 
         if (Find(modsRoot, itemName, bodyName) is { } already)
+        {
+            if (displayName != null && folder != null)
+                RestoreLegacyLabel(already, itemName, bodyName, displayName, folder);
             return new(true, already, Path.GetFileName(already), "");
+        }
 
         string want = NameFor(itemName, bodyName);
 
         // The first name whose folder is free. A taken one belongs to another item that sanitised the same way —
         // Find has already ruled out its being ours.
-        string? dirName = null, modName = null;
+        string? dirName = null, modName = null, storageKey = null;
         for (int n = 1; n <= MaxNames && dirName == null; n++)
         {
             string candidate = Numbered(want, n);
             if (DirFor(candidate) is not { } dir) break;
             if (Directory.Exists(Path.Combine(modsRoot, dir))) continue;
+            storageKey = candidate;
             dirName = dir;
-            modName = candidate;
+            modName = displayName == null ? candidate : Numbered(displayName, n);
         }
         if (dirName == null || modName == null)
             return new(false, "", "", string.Format(ProteusLoc.Localize("Refit.Error.NoName.Fmt",
@@ -163,6 +176,11 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
             Directory.CreateDirectory(root);
             WriteScaffold(root, modName, description ?? string.Format(ProteusLoc.Localize("Refit.Mod.Description.Fmt",
                 "{0}, refitted by Proteus."), itemName));
+            if (displayName != null)
+            {
+                Directory.CreateDirectory(Path.Combine(root, "Proteus"));
+                File.WriteAllText(DisplayKeyPath(root), storageKey!);
+            }
             fill?.Invoke(root);
         }
         catch (Exception ex)
@@ -218,6 +236,11 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
         {
             var moved = penumbra.SetModListPath(p.DirName, path);
             if (moved == PenumbraApiEc.ModMissing && now < p.Deadline) return null;
+            if (moved == PenumbraApiEc.PathRenameFailed && p.DirName.StartsWith(YabOutput.Prefix, StringComparison.Ordinal))
+            {
+                // Several race/slot models can share one equipment name in the same layer.
+                moved = penumbra.SetModListPath(p.DirName, path + " (" + p.DirName[YabOutput.Prefix.Length..] + ")");
+            }
             if (moved != PenumbraApiEc.Success)
                 log.Warning("[Proteus] refit mod {0}: couldn't file it under {1} ({2})", p.DirName, path, moved);
             pending = p = p with { ListPath = null };
@@ -285,7 +308,7 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
     }
 
     /// <summary>The mod's own name out of its manifest, or null when there is nothing readable there.</summary>
-    private static string? NameOf(string root)
+    internal static string? NameOf(string root)
     {
         try
         {
@@ -297,6 +320,34 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    // Migrate only an untouched legacy label. Players can rename and organize their own copies.
+    internal void RestoreLegacyLabel(string root, string item, string layer, string display, string folder)
+    {
+        if (File.Exists(DisplayKeyPath(root))) return;
+        string dir = Path.GetFileName(root);
+        string? old = NameOf(root);
+        if (old != NameFor(item, layer) || DirFor(old) != dir) return;
+        bool atRoot = penumbra.IsDefaultListPath(dir);
+        lock (ModManifestLock.Gate)
+        {
+            string path = Path.Combine(root, PenumbraModMeta.MetaFile);
+            var meta = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path));
+            if (meta == null || (string?)meta["Name"] != old) return;
+            Directory.CreateDirectory(Path.Combine(root, "Proteus"));
+            File.WriteAllText(DisplayKeyPath(root), old);
+            meta["Name"] = display;
+            PenumbraModMeta.AtomicWrite(path, meta.ToJsonString());
+        }
+        penumbra.ReloadModDirectory(dir);
+        if (atRoot && ListPath(folder, display) is { } destination)
+        {
+            var ec = penumbra.SetModListPath(dir, destination);
+            if (ec == PenumbraApiEc.PathRenameFailed)
+                ec = penumbra.SetModListPath(dir, destination + " (" + dir[YabOutput.Prefix.Length..] + ")");
+            if (ec != PenumbraApiEc.Success) log.Warning("[Proteus] could not file {0} under {1}: {2}", dir, folder, ec);
         }
     }
 

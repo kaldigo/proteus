@@ -27,6 +27,25 @@ public class YabFitTests
         Assert.Null(YabOutput.For(config,"","Other body","Vanilla","item.mdl",[],0));
     }
 
+    [Fact]
+    public void Generated_gear_keeps_its_storage_identity_under_an_item_label()
+    {
+        var temp = Directory.CreateTempSubdirectory();
+        try
+        {
+            const string item = "Proteus Fit c0201e0771_top";
+            string key = RefitModService.NameFor(item, YabOutput.Base);
+            string root = Path.Combine(temp.FullName, RefitModService.DirFor(key)!);
+            Directory.CreateDirectory(Path.Combine(root, "Proteus"));
+            RefitModService.WriteScaffold(root, "Lunar Envoy's Justaucorps of Healing — Yet Another Body+", "Refit");
+            Assert.Null(RefitModService.Find(temp.FullName, item, YabOutput.Base));
+            File.WriteAllText(Path.Combine(root, "Proteus", RefitModService.DisplayKeyFile), key);
+            Assert.Equal(root, RefitModService.Find(temp.FullName, item, YabOutput.Base));
+            Assert.Equal("Proteus Upscales/Base refits", new YabOutput(item, YabOutput.Base, 0, "").Folder);
+        }
+        finally { temp.Delete(true); }
+    }
+
     [Theory]
     [InlineData("../outside","source.mdl")]
     [InlineData("inside","../outside.mdl")]

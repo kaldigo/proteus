@@ -1231,7 +1231,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         RacialModelBake.Wearer? Wearer, byte[]? VanillaBytes, VanillaPick? Vanilla,
         IReadOnlyDictionary<string, PenumbraBridge.ModSettingsSnapshot>? Permanent,
         (Worn Worn, string? Resolved, string? Root)? Now = null, IReadOnlySet<string>? Drawn = null,
-        IReadOnlySet<string>? GameBodyRaces = null);
+        IReadOnlySet<string>? GameBodyRaces = null, string? EquipmentName = null);
 
     /// <summary>
     /// Run a short piece of a refit on the framework thread. Timed, because anything slow here is a frame the player
@@ -1941,6 +1941,13 @@ public sealed partial class AutoRefitWatcher : IDisposable
             return true;
         }
         if (root == null) return false;
+        if (r.Output is { } owned && !File.Exists(Path.Combine(root, "Proteus", RefitModService.DisplayKeyFile)))
+            await OnFramework(() =>
+            {
+                refitMods.RestoreLegacyLabel(root, owned.Item, owned.Layer,
+                    RefitModService.NameFor(g.EquipmentName ?? item, body), owned.Folder);
+                return true;
+            });
         (string, string)? from = source == null ? null : (source.Dir, source.Option.Rel);
         if (!Existing(root, group, option, savePath, from, layers, r.Forced, chestBeneath, chestBeneathDir, end))
         {
@@ -1983,7 +1990,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
         if (root == null)
         {
             var made = await OnFramework(() => refitMods.Ensure(r.Output?.Item ?? g.Vanilla!.Value.ItemName, r.Output?.Layer ?? targetMod.Name,
-                                                                    folder: r.Output?.Folder ?? RefitModService.OwnModsFolder, priority: r.Output?.Priority));
+                                                                    folder: r.Output?.Folder ?? RefitModService.OwnModsFolder, priority: r.Output?.Priority,
+                                                                    displayName: r.Output == null ? null : RefitModService.NameFor(g.EquipmentName ?? item, targetMod.Name)));
             if (!made.Ok)
             {
                 Fail(r, string.Format(ProteusLoc.Localize("Chat.AutoRefit.Failed.Fmt", "[Proteus] Couldn't refit {0}: {1}"), item,
@@ -2031,7 +2039,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
     /// <summary>What chat calls the mod a refit was saved into.</summary>
     private static string SavedIn(Gathered g, string root, BodyModIndex.Entry targetMod)
-        => Path.GetFileName(root).StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase) ? Path.GetFileName(root)
+        => Path.GetFileName(root).StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase) ? RefitModService.NameOf(root) ?? Path.GetFileName(root)
          : g.Vanilla is { } vanilla ? RefitModService.NameFor(vanilla.ItemName, targetMod.Name)
          : g.Mods.TryGetValue(Path.GetFileName(root), out string? modName) && modName.Length > 0 ? modName
          : Path.GetFileName(root);
@@ -2084,10 +2092,11 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         byte[]? vanillaBytes = null;
         VanillaPick? vanilla = null;
+        itemNames ??= ItemNames.Lookup(Plugin.DataManager, log);
+        var gear = VanillaPick.From(r.Worn.GamePath, itemNames);
         if (r.ModRoot == null)
         {
-            itemNames ??= ItemNames.Lookup(Plugin.DataManager, log);
-            vanilla = VanillaPick.From(r.Worn.GamePath, itemNames);
+            vanilla = gear;
             if (vanilla is not { Refittable: true }) return null;
             vanillaBytes = readGameFile(r.Worn.GamePath);
         }
@@ -2105,7 +2114,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
             : null;
         // A copy for the worker: the framework thread changes the live sets in place (Apply, UndoWorn).
         return new Gathered(pref.Copy(), mods, modsRoot, settings, wearer, vanillaBytes, vanilla, permanent, now, drawn,
-                            GameBodyRaces(r.Worn.GamePath));
+                            GameBodyRaces(r.Worn.GamePath), gear?.ItemName);
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ internal sealed record YabOutput(string Item, string Layer, int Priority, string
     internal const string Resize = "YAB size refits";
     internal const string Manual = "Manual corrections";
     internal const string Prefix = "Proteus Fit ";
-    internal string Folder => "Proteus/" + Layer;
+    internal string Folder => RefitModService.OwnModsFolder + "/" + Layer;
     internal static bool IsYab(string body)
         => body.Contains("Yet Another Body", StringComparison.OrdinalIgnoreCase)
            || body.Contains("YAB", StringComparison.OrdinalIgnoreCase);

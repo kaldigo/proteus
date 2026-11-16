@@ -30,6 +30,7 @@ public class PenumbraBridge : IDisposable
     private readonly AddMod addMod;
     private readonly ReloadMod reloadMod;
     private readonly DeleteMod deleteMod;
+    private readonly GetModPath getModPath;
     private readonly SetModPath setModPath;
     private readonly TrySetMod trySetMod;
     private readonly TrySetModPriority trySetModPriority;
@@ -123,6 +124,7 @@ public class PenumbraBridge : IDisposable
         addMod = new AddMod(pluginInterface);
         reloadMod = new ReloadMod(pluginInterface);
         deleteMod = new DeleteMod(pluginInterface);
+        getModPath = new GetModPath(pluginInterface);
         setModPath = new SetModPath(pluginInterface);
         trySetMod = new TrySetMod(pluginInterface);
         trySetModPriority = new TrySetModPriority(pluginInterface);
@@ -728,6 +730,17 @@ public class PenumbraBridge : IDisposable
         if (!IsAvailable) return PenumbraApiEc.SystemDisposed;
         try { return OnMainThread(() => deleteMod.Invoke(modDirectory), WriteStats); }
         catch (Exception ex) { log.Error(ex, "DeleteMod failed"); return PenumbraApiEc.UnknownError; }
+    }
+
+    internal bool IsDefaultListPath(string dir)
+    {
+        if (!IsAvailable) return false;
+        try
+        {
+            var (ec, _, fullDefault, _) = getModPath.Invoke(dir);
+            return ec == PenumbraApiEc.Success && fullDefault;
+        }
+        catch (Exception ex) { log.Warning(ex, "GetModPath failed for {0}", dir); return false; }
     }
 
     /// <summary>File a mod in Penumbra's mod list: <paramref name="path"/> is folders and the mod's name joined by

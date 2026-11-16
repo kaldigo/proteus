@@ -67,8 +67,10 @@ public sealed partial class PartsPanel
             return;
         }
 
+        string? displayName = null;
         if (fitConfig.SeparateGearCorrections && piece.Refittable)
         {
+            displayName = VanillaEditCopy.ModName(piece.ItemName);
             priority ??= fitConfig.ManualFitPriority;
             piece = piece with { ItemName = YabOutput.Prefix + "Manual " + Path.GetFileNameWithoutExtension(piece.GamePath) };
         }
@@ -91,7 +93,7 @@ public sealed partial class PartsPanel
             {
                 result = MeshVolumeService.Apply(root, rel, gameBytes, solve, writeUntouched: true);
                 return new VanillaEditCopy.FirstWrite(result.Ok, result.Message);
-            }, out bool written, priority) is not { } copy)
+            }, out bool written, priority, displayName) is not { } copy)
         {
             if (written) { brushChangedAt = -1; return; }   // saved, though the panel could not carry on in the copy
             // Still waiting: retried on the debounce, as a failed save is — deleting a refused mod lets it through.
@@ -161,12 +163,12 @@ public sealed partial class PartsPanel
     /// </summary>
     /// <param name="written">Set when the change was saved although null is returned: the mod had no row to carry on in.</param>
     private (string Root, bool Made)? CopyVanillaForEdit(VanillaPick piece, Func<string, string, VanillaEditCopy.FirstWrite> write,
-                                                         out bool written, int? priority = null)
+                                                         out bool written, int? priority = null, string? displayName = null)
     {
         written = false;
         var ps = Strings.Parts;
         if (brushBase == null) return null;
-        string modName = VanillaEditCopy.ModName(piece.ItemName);
+        string modName = displayName ?? VanillaEditCopy.ModName(piece.ItemName);
 
         VanillaEditCopy.Outcome outcome;
         try
@@ -179,7 +181,8 @@ public sealed partial class PartsPanel
                                    && penumbra.GetModSettings(coll, dir) is { } s ? s.Enabled : null,
                 ensure: fill => refitMods.Ensure(piece.ItemName, RefitModService.EditQualifier, fill,
                                                  description: string.Format(ps.VanillaModDescriptionFmt, piece.ItemName),
-                                                 folder: priority.HasValue ? "Proteus/" + YabOutput.Manual : RefitModService.OwnModsFolder, priority: priority),
+                                                 folder: priority.HasValue ? RefitModService.OwnModsFolder + "/" + YabOutput.Manual : RefitModService.OwnModsFolder,
+                                                 priority: priority, displayName: displayName),
                 firstWrite: write);
         }
         catch (Exception ex)
