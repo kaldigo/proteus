@@ -417,7 +417,10 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         string? modsRoot = penumbra.GetModDirectory();
         var collection = penumbra.GetPlayerCollection();
-        var worn = ReadWorn(penumbra.GetActivePlayerModelPaths(), modsRoot, out _, readOrigin: false);
+        var models = penumbra.GetActivePlayerModelPaths();
+        var worn = ReadWorn(models, modsRoot, out _, readOrigin: false);
+        var origins = worn.Values.Where(p => p.ModDir?.StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase) == true)
+            .ToDictionary(p => p.Key, p => Resolve(p.GamePath, modsRoot).Worn.Key, StringComparer.OrdinalIgnoreCase);
         if (modsRoot is not { Length: > 0 } || collection is not { } c
             || !config.AutoRefitByCollection.TryGetValue(c.Id.ToString("D"), out var pref))
         {
@@ -551,6 +554,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                     foreach (var (piece, r) in results)
                     {
                         pref.Declined.Add(piece.Key);
+                        if (origins.TryGetValue(piece.Key, out var original)) pref.Declined.Add(original);
                         if (r.Empty) pref.Declined.Add(new Worn(piece.GamePath, null, null).Key);
                         // The other pieces the options taken out served — the legs of an option sizing the chest and the
                         // legs together, gone with the chest — where worn or refitted: their own undo found nothing.
@@ -1452,7 +1456,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         BodyOption? TargetFor(string slot) => targets.TargetFor(slot, primary);
 
         // ── an author's option sizing the chest and the legs together: one option for both refits ──
-        var together = YabOutput.IsYab(lead.Name) ? null : PlanPair(r, g, lead, targets, redirects, ownRecord, item, TargetFor);
+        var together = PlanPair(r, g, lead, targets, redirects, ownRecord, item, TargetFor);
 
         // Shoes and gloves keep their own feet and hands: only the legs or arms they reach are refitted. See KeepEnds.
         if (AutoRefitDecisions.LimbOf(primary) != null)
@@ -1580,12 +1584,12 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                 string.Join(", ", off));
         }
 
-        r = r with { Output = YabOutput.For(config, state.Version, lead.Name, sourceName, r.Worn.GamePath, bytes, r.ModSettings?.Priority ?? 0) };
+        r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
         if (r.Output is { Layer: YabOutput.Base } && pick.Dir != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, lead, redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
-        if (together != null) cutFrom = together.Plan.CutFrom;
+        if (r.Output == null && together != null) cutFrom = together.Plan.CutFrom;
 
         string OptionFor(IEnumerable<(string Slot, BodyOption From, BodyOption To)> parts)
             => RefitCore.OptionName(new[] { (lead.Name, target.Label) }
@@ -1596,7 +1600,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         // left out below still goes into the option joined here.
         string option = OptionFor(others);
         string? joined = null;
-        if (together is { Plan: { Paired: true, Option: { } shared } })
+        if (r.Output == null && together is { Plan: { Paired: true, Option: { } shared } })
             option = joined = shared;
         else if (r.Output == null && root != null && RefitCore.IsSharedSingleGroup(redirects, ownRecord, group, RefitCore.SingleGroups(root))
                  && RefitCore.JoinOption(ownRecord, group, savePath, targets.ChosenFiles(primary, lead, target, parts.Placed),
@@ -2031,6 +2035,21 @@ public sealed partial class AutoRefitWatcher : IDisposable
          : g.Vanilla is { } vanilla ? RefitModService.NameFor(vanilla.ItemName, targetMod.Name)
          : g.Mods.TryGetValue(Path.GetFileName(root), out string? modName) && modName.Length > 0 ? modName
          : Path.GetFileName(root);
+
+    private static string InputVersion(Gathered g, Request r, string bodies, string source)
+    {
+        var options = new System.Text.StringBuilder(bodies);
+        options.Append('|').Append(r.Worn.ModDir).Append('|').Append(r.Worn.Rel).Append('|').Append(source);
+        foreach (var dir in new[] { source, g.Preference.BodyOf("_top"), g.Preference.BodyOf("_dwn"),
+                                    g.Preference.BodyOf("_glv"), g.Preference.BodyOf("_sho") }.Distinct(StringComparer.Ordinal))
+        {
+            if (SettingsOf(g.Settings, dir) is not { } s) continue;
+            options.Append('|').Append(dir);
+            foreach (var group in s.Options.OrderBy(g => g.Key, StringComparer.Ordinal))
+                options.Append('|').Append(group.Key).Append('=').AppendJoin(',', group.Value.Order(StringComparer.Ordinal));
+        }
+        return options.ToString();
+    }
 
     private static PenumbraBridge.ModSettingsSnapshot? SettingsOf(
         IReadOnlyDictionary<string, PenumbraBridge.ModSettingsSnapshot>? settings, string? modDir)

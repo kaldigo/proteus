@@ -137,11 +137,11 @@ public sealed partial class AutoRefitWatcher
         // A skin-only redraw is drawn like the hands' or feet's own body, and saved under it.
         var savedFor = decision is KeepEnds.SkinOnly ? j.Targets.Body(reading.Slot) ?? lead : lead;
         var sourceBody = decision is KeepEnds.Refit sizedFrom ? sizedFrom.Source.Dir : ((KeepEnds.SkinOnly)decision).Own.Dir;
-        r = r with { Output = YabOutput.For(config, j.State.Version, savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, r.ModSettings?.Priority ?? 0) };
+        r = r with { Output = YabOutput.For(config, InputVersion(g, r, j.State.Version, sourceBody), savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, r.ModSettings?.Priority ?? 0) };
         if (r.Output is { Layer: YabOutput.Base } && sourceBody != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, savedFor, j.Redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
-        if (j.Pair != null) cutFrom = j.Pair.Plan.CutFrom;
+        if (r.Output == null && j.Pair != null) cutFrom = j.Pair.Plan.CutFrom;
         // The hands or feet it rides on, recorded when they are not plainly matched on the arms' or legs' body â€” so a
         // refit of today's kind records just what it always did, and a change of their size or body makes it again.
         bool plainEnd = j.G.Preference.SizeOf(reading.Slot) == null
@@ -173,7 +173,7 @@ public sealed partial class AutoRefitWatcher
             : KeepEnds.SkinOnlyOption(savedFor.Name);
         // Shipped in an option that sizes the chest and the legs together: into the one option their refits share, a
         // redraw of its skin alone too â€” an option of its own would switch them off.
-        if (j.Pair is { Plan: { Paired: true, Option: { } shared } })
+        if (r.Output == null && j.Pair is { Plan: { Paired: true, Option: { } shared } })
             option = shared;
         // Sized together with the chest or legs in one of the author's single-choice groups: into the option that piece's
         // refit went into, so switching one on does not switch the other off.

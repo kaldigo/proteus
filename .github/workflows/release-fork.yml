@@ -31,15 +31,12 @@ jobs:
       - name: Use HTTPS for public submodules
         shell: bash
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_commit || github.sha }}
           fetch-depth: 0
           submodules: recursive
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '10.0.x'
       - name: Verify source and routine-release eligibility
@@ -58,7 +55,7 @@ jobs:
           }
       - name: Plan unique release version
         id: plan
-        uses: kaldigo/DalamudPlugins/.github/actions/plan-release@062d19636439530cf7426b0b07a900819c3a7888
+        uses: kaldigo/DalamudPlugins/.github/actions/plan-release@062d19636439530cf7426b0b07a900819c3a7888 # v1 release contract
         env:
           GH_TOKEN: ${{ github.token }}
         with:
@@ -93,7 +90,7 @@ jobs:
           python tools/package_release.py --tag $env:RELEASE_TAG --changelog-file "$env:RUNNER_TEMP/plugin-changelog.txt"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Publish or recover the validated release and source feed
-        uses: kaldigo/DalamudPlugins/.github/actions/publish-release@062d19636439530cf7426b0b07a900819c3a7888
+        uses: kaldigo/DalamudPlugins/.github/actions/publish-release@062d19636439530cf7426b0b07a900819c3a7888 # v1 release contract
         env:
           GH_TOKEN: ${{ github.token }}
         with:

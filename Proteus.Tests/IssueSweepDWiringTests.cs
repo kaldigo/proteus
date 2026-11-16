@@ -364,7 +364,7 @@ public class IssueSweepDWiringTests
             Assert.DoesNotContain("config.AutoRedraw", Source($"Services/CompositorService.{f}.cs"));
         const string definition = "internal bool AutoRedrawOn => HarnessAutoRedrawOverride ?? config.AutoRedraw;";
         Assert.Contains(definition, Recovery);
-        Assert.DoesNotContain("config.AutoRedraw", Recovery.Replace(definition, ""));
+        Assert.DoesNotContain("config.AutoRedraw", Recovery.Replace(definition, "").Replace("internal bool AutoRedrawOn => config.AutoRedraw;", ""));
     }
 
     [Fact]

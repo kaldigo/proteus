@@ -26,7 +26,7 @@ internal sealed record YabOutput(string Item, string Layer, int Priority, string
         bool resize = IsYab(source);
         return new(Prefix + Path.GetFileNameWithoutExtension(gamePath), resize ? Resize : Base,
                    resize ? Math.Max(config.SizeFitPriority, Above(sourcePriority)) : config.BaseFitPriority,
-                   Key(FormattableString.Invariant($"{version}|{config.UseYabField}|{config.VanillaChestStrength:R}|{config.VanillaLegStrength:R}|") + source + Convert.ToHexString(SHA256.HashData(bytes))));
+                   Key(FormattableString.Invariant($"{version}|{config.UseYabField}|{config.AutoRefitPiercings}|{config.VanillaChestStrength:R}|{config.VanillaLegStrength:R}|") + source + Convert.ToHexString(SHA256.HashData(bytes))));
     }
 
     internal sealed record Origin(string GamePath, string? Directory, string? File);
