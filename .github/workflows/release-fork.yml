@@ -60,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         with:
           internal-name: Proteus
-          minimum-version: '2611.1.0.0'
+          minimum-version: '2611.1659.0.0'
           source-commit: ${{ inputs.source_commit || github.sha }}
           tag: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
       - name: Build the exact source at its planned version
