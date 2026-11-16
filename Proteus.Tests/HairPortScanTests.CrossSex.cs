@@ -99,6 +99,7 @@ public partial class HairPortScanTests
         var key = HairPortScan.RefusalKey(root, d, null, Me);
         Assert.Contains($"{info.Length}:{info.LastWriteTimeUtc.Ticks}", key);
         Setup.Put(root, "default group/h0005.mdl", HairModelOf(101, MenId, radius: 0.12f));
+        File.SetLastWriteTimeUtc(file, info.LastWriteTimeUtc.AddSeconds(2));
         Assert.NotEqual(key, HairPortScan.RefusalKey(root, d, null, Me));
     }
 
