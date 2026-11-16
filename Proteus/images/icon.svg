@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Proteus dress form</title>
+  <defs>
+    <linearGradient id="silk">
+      <stop offset="0" stop-color="#00efbb"/>
+      <stop offset=".28" stop-color="#00e5d8"/>
+      <stop offset=".5" stop-color="#8887ff"/>
+      <stop offset=".73" stop-color="#d533ff"/>
+      <stop offset="1" stop-color="#f000ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#silk)"/>
+  <rect x="10" y="10" width="492" height="492" rx="11" fill="#100f10"/>
+  <path fill="url(#silk)" fill-rule="evenodd" d="M238 84 H274 V105 Q274 117 290 121 L330 135 L346 162 L317 182 Q304 200 310 220 L319 242 Q331 271 327 318 Q297 337 268 338 V369 L311 385 V401 H201 V385 L244 369 V338 Q215 337 185 318 Q181 271 193 242 L202 220 Q208 200 195 182 L166 162 L182 135 L222 121 Q238 117 238 105 Z M207 238 Q253 255 305 234 L301 220 Q254 238 212 224 Z"/>
+</svg>

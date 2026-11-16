@@ -785,7 +785,7 @@ internal static partial class BodyRetarget
                                Outfit? outfit = null, string? tuckSlot = null, bool deepClear = false,
                                bool keepStandoff = false, bool carryPiercings = false, bool liftUnderbust = true,
                                bool seeInside = false, bool relaxSinkGuard = false, bool openSkin = false,
-                               bool rebuildSwapsShapeOnly = false, IReadOnlySet<string>? swappedSkinTags = null)
+                               bool rebuildSwapsShapeOnly = false, IReadOnlySet<string>? swappedSkinTags = null, YabTransfer transfer = YabTransfer.Default, float? fitStrength = null)
     {
         // The pairs that go in for their shape only as asked — not one ReadySmallclothes turns so below, which keeps the
         // garment's own skin because its new body's smallclothes could not be brought in. A pair asked so is never readied
@@ -826,7 +826,7 @@ internal static partial class BodyRetarget
         bool standoff = keepStandoff && clearBody && garmentSlot == "_top" && !Tuned.NoKeepStandoff;
         var solved = Solve(garment, pairs, garmentSlot, pushOut, held, replaceSkin, clearBody, keepShape,
                            ModelSkinReader.Read(garmentBytes, null, null), swapSlot, parted, chestSlot, trace, outfit,
-                           deep, standoff, liftUnderbust, relaxSinkGuard);
+                           deep, standoff, liftUnderbust, relaxSinkGuard, transfer, fitStrength);
         if (solved.ShapeFallbacks > 0)
             log?.Invoke($"keep shape: {solved.ShapeFallbacks} turns of kept pieces too flat for the usual fit, made by the "
                         + "quaternion fit");
@@ -948,7 +948,7 @@ internal static partial class BodyRetarget
                                  XivLiveMesh.SkinnedMesh? garmentSkin = null, string? swapSlot = null,
                                  IReadOnlySet<int>? swapMeshes = null, string? chestSlot = null,
                                  Action<string, Vec3[]>? trace = null, Outfit? outfit = null, bool deepClear = false,
-                                 bool keepStandoff = false, bool liftUnderbust = true, bool relaxSinkGuard = false)
+                                 bool keepStandoff = false, bool liftUnderbust = true, bool relaxSinkGuard = false, YabTransfer transfer = YabTransfer.Default, float? fitStrength = null)
     {
         // With the skin replaced, the garment's OWN slot body is drawn after all — Rebuild embeds that very mesh in the
         // garment, so it is what the cloth ends up lying against. Asking for the swap is not enough: Rebuild only swaps
@@ -971,6 +971,7 @@ internal static partial class BodyRetarget
 
         Transfer(sets, sets.AllNodes, source, nodeDelta, snapped, out int transferred, out int missed,
                  garmentSkin != null ? NodeSides(sets, garmentSkin, BodyBonesOf(pairs)) : null);
+        YabFitField.Apply(transfer, pairs, sets, nodeDelta, snapped, garmentSlot, fitStrength);
         Stage("transfer");
         Knit(sets, nodeDelta, snapped);
         Stage("knit");

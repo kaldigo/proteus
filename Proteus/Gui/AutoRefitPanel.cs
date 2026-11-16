@@ -88,6 +88,37 @@ internal sealed class AutoRefitPanel(AutoRefitWatcher watcher, PenumbraBridge pe
         ImGui.Separator();
         ImGui.Spacing();
 
+        if (ImGui.CollapsingHeader("YAB refit options"))
+        {
+            bool improved = config.UseYabField, foreign = config.FitOtherBodies, manual = config.SeparateGearCorrections;
+            int basePriority = config.BaseFitPriority, resizePriority = config.SizeFitPriority, manualPriority = config.ManualFitPriority;
+            bool changed = ImGui.Checkbox("Use the YAB chest and leg conversion method", ref improved);
+            float chest = config.VanillaChestStrength, legs = config.VanillaLegStrength;
+            using (ImRaii.Disabled(!improved))
+            {
+                changed |= ImGui.SliderFloat("Vanilla chest strength", ref chest, 0, 1.5f, "%.2f");
+                changed |= ImGui.SliderFloat("Vanilla leg strength", ref legs, 0, 1.5f, "%.2f");
+            }
+            changed |= ImGui.Checkbox("Also convert gear made for other modded bodies", ref foreign);
+            changed |= ImGui.Checkbox("Save gear brush edits in separate correction mods", ref manual);
+            changed |= ImGui.InputInt("Base refit priority", ref basePriority);
+            changed |= ImGui.InputInt("YAB resize minimum priority", ref resizePriority);
+            changed |= ImGui.InputInt("Manual correction minimum priority", ref manualPriority);
+            ImGui.TextWrapped("Base refits should sit below handmade YAB gear. Resizes and corrections are raised above their source when necessary. Use Refit what I'm wearing now to apply changes.");
+            if (changed)
+            {
+                config.UseYabField = improved;
+                config.VanillaChestStrength = chest;
+                config.VanillaLegStrength = legs;
+                config.FitOtherBodies = foreign;
+                config.SeparateGearCorrections = manual;
+                config.BaseFitPriority = basePriority;
+                config.SizeFitPriority = resizePriority;
+                config.ManualFitPriority = manualPriority;
+                config.Save();
+            }
+        }
+
         RefreshIfDue();
         if (collections == null)
         {

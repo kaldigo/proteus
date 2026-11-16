@@ -390,6 +390,15 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool AutoRefitPiercings { get; set; }
 
+    public int BaseFitPriority { get; set; } = 0;
+    public int SizeFitPriority { get; set; } = 7;
+    public int ManualFitPriority { get; set; } = 8;
+    public bool UseYabField { get; set; } = true;
+    public float VanillaChestStrength { get; set; } = .75f;
+    public float VanillaLegStrength { get; set; } = 1f;
+    public bool FitOtherBodies { get; set; }
+    public bool SeparateGearCorrections { get; set; } = true;
+
     /// <summary>
     /// The body and sizes gear is refitted onto, per Penumbra collection, keyed by the collection's id
     /// (<c>Guid.ToString("D")</c>) — a collection is a character's look, and two characters can wear different bodies.

@@ -41,8 +41,8 @@
          nothing reads, so editing it changes nothing a user ever sees. Edit here.
          Newlines are &#xA; entities rather than real line breaks, so the XML indentation cannot leak
          into the description text. -->
-    <Name>Proteus</Name>
-    <Author>Solona</Author>
+    <Name>Proteus (Aetherworks)</Name>
+    <Author>Solona, Kaldigo</Author>
     <Punchline>Overlays, off-slot gear and model editing for Penumbra mods</Punchline>
     <Description>• Lets you use overlays — skin-tight gear, tattoos, scales and the like — as a regular Penumbra mod you can toggle on and off, recolour, bind to Glamourer designs and collections, and more.&#xA;&#xA;• Overlays render two ways. Painted into your skin, except now your overlays are dyeable. Or as a second skin, which lets you use sphere maps, metalness and animated glow that skin materials can't do.&#xA;&#xA;• Reshape any mod's models. Paint on your character to pull clothing clear of your body, push it in, smooth it, stretch it across a hollow, or paint where the wind sways it. Hair works too. Edits save into the mod and can be undone.&#xA;&#xA;• Add on/off switches to any part of any mod.&#xA;&#xA;• Make modded hair fit under hats, and undo it any time.&#xA;&#xA;• Import regular old mods and equip them without using a gear slot.&#xA;&#xA;• Save a mod's look as a preset you can wear, share and swap.&#xA;&#xA;• Imports Penumbra .pmp, Onion .omp and Atramentum Luminis .ttmp2 glow tattoos, with no shader mod needed.&#xA;&#xA;• Cloth overlays can enable skindenting with one click.&#xA;&#xA;Type /proteus to manage your Proteus mods.</Description>
     <ApplicableVersion>any</ApplicableVersion>
@@ -54,8 +54,8 @@
          the file has to exist on main under this exact (case-sensitive) path. Note that the
          end-user listing in solona-m/plugins/repo.json carries its own IconUrl — this property
          does not propagate there. -->
-    <IconUrl>https://raw.githubusercontent.com/solona-m/proteus/main/Proteus/images/icon.png</IconUrl>
-    <RepoUrl>https://github.com/solona-m/proteus</RepoUrl>
+    <IconUrl>https://raw.githubusercontent.com/kaldigo/proteus/main/Proteus/images/icon.png</IconUrl>
+    <RepoUrl>https://github.com/kaldigo/proteus</RepoUrl>
     <!-- Shown under the plugin entry after an update. Deliberately empty here: the value comes from
          the annotated tag's message, which release.yml reads into a Changelog environment variable
          before invoking dotnet build (MSBuild surfaces environment variables as properties, and this

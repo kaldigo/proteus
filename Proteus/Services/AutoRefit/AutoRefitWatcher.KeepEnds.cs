@@ -51,13 +51,13 @@ public sealed partial class AutoRefitWatcher
         AssertOffFramework("reading the garment's ends");
         if (KeepEnds.Read(slot, j.Garment, j.Bytes) is not { } reading)
         {
-            log.Information("[Proteus] auto refit: {0} — its rig could not be read, so its {1} cannot be told from the rest",
+            log.Information("[Proteus] auto refit: {0} â€” its rig could not be read, so its {1} cannot be told from the rest",
                             item, feet ? "feet" : "hands");
             SayUnsure(item);
             return;
         }
 
-        // ── the author's own size, compared by the legs (see KeepEnds.ComparesAuthorSizes) ──
+        // â”€â”€ the author's own size, compared by the legs (see KeepEnds.ComparesAuthorSizes) â”€â”€
         if (KeepEnds.ComparesAuthorSizes(slot) && j.TargetFor(reading.Limb) is { } limbTarget
             && await SwitchToAuthorSize(r, g, item, j.Redirects, j.OwnRecord, j.Route, lead, limbTarget,
                                         reading.Limb, j.Race, j.State.Version,
@@ -65,7 +65,7 @@ public sealed partial class AutoRefitWatcher
                                         j.Targets))
             return;
 
-        // ── what it was made on, read from what it reaches ──
+        // â”€â”€ what it was made on, read from what it reaches â”€â”€
         BodySizeCatalog? CatalogOf(string dir) => dir == VanillaBodyCatalog.Key ? j.VanillaCat : j.State.Find(dir)?.Catalog;
         var found = ReadEnds(j, reading, CatalogOf, out var siblings);
         ct.ThrowIfCancellationRequested();
@@ -73,7 +73,7 @@ public sealed partial class AutoRefitWatcher
                       + "route {5}", item, feet ? "feet" : "hands", reading.Ends.Count, reading.Vertices, reading.Band,
                         KeepEnds.Letter(found.Route));
 
-        // ── what to do with it, decided before anything is worked out ──
+        // â”€â”€ what to do with it, decided before anything is worked out â”€â”€
         // The arms or legs judged on their own body; the hands or feet ride on theirs (see AutoRefitTargets.TargetFor).
         var decision = KeepEnds.Decide(found, reading, j.Bones, j.Race, lead.Dir, CatalogOf, j.TargetFor);
         switch (decision)
@@ -114,7 +114,7 @@ public sealed partial class AutoRefitWatcher
             SayBodyMissing(r, endGone, reading.Slot, item, j.Targets);
 
         // A skin-only redraw is cheap and says by itself whether anything needs doing: one already drawn like the new
-        // body — a redraw put on again among them — is left as it is, quietly, rather than put back and announced on every
+        // body â€” a redraw put on again among them â€” is left as it is, quietly, rather than put back and announced on every
         // equip.
         EndsOutput? skinOnly = null;
         if (decision is KeepEnds.SkinOnly skin)
@@ -136,10 +136,13 @@ public sealed partial class AutoRefitWatcher
 
         // A skin-only redraw is drawn like the hands' or feet's own body, and saved under it.
         var savedFor = decision is KeepEnds.SkinOnly ? j.Targets.Body(reading.Slot) ?? lead : lead;
+        var sourceBody = decision is KeepEnds.Refit sizedFrom ? sizedFrom.Source.Dir : ((KeepEnds.SkinOnly)decision).Own.Dir;
+        r = r with { Output = YabOutput.For(config, j.State.Version, savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, r.ModSettings?.Priority ?? 0) };
+        if (r.Output is { Layer: YabOutput.Base } && sourceBody != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, savedFor, j.Redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
         if (j.Pair != null) cutFrom = j.Pair.Plan.CutFrom;
-        // The hands or feet it rides on, recorded when they are not plainly matched on the arms' or legs' body — so a
+        // The hands or feet it rides on, recorded when they are not plainly matched on the arms' or legs' body â€” so a
         // refit of today's kind records just what it always did, and a change of their size or body makes it again.
         bool plainEnd = j.G.Preference.SizeOf(reading.Slot) == null
                         && string.Equals(j.Targets.DirOf(reading.Slot), lead.Dir, StringComparison.OrdinalIgnoreCase);
@@ -169,12 +172,12 @@ public sealed partial class AutoRefitWatcher
             ? RefitCore.OptionName(lead.Name, [refitOnto.Target.Label])
             : KeepEnds.SkinOnlyOption(savedFor.Name);
         // Shipped in an option that sizes the chest and the legs together: into the one option their refits share, a
-        // redraw of its skin alone too — an option of its own would switch them off.
+        // redraw of its skin alone too â€” an option of its own would switch them off.
         if (j.Pair is { Plan: { Paired: true, Option: { } shared } })
             option = shared;
         // Sized together with the chest or legs in one of the author's single-choice groups: into the option that piece's
         // refit went into, so switching one on does not switch the other off.
-        else if (decision is KeepEnds.Refit && root != null
+        else if (r.Output == null && decision is KeepEnds.Refit && root != null
                  && RefitCore.IsSharedSingleGroup(j.Redirects, j.OwnRecord, group, RefitCore.SingleGroups(root)))
             option = RefitCore.JoinOption(j.OwnRecord, group, j.SavePath, j.Targets.ChosenFiles(r.Slot), targets, option);
         // Sized by the chest or legs piece of its own option: kept outside that piece as it is drawn now, which a refit
@@ -183,11 +186,12 @@ public sealed partial class AutoRefitWatcher
             ? PartnerOf(j, reading.Limb, siblings[0], sized)
             : null;
         var layers = partner != null ? OutfitPartners.LayersOf(r.ModRoot!, partner) : null;
+        if (r.Output is { } fit) option += " [" + fit.Stamp + "]";
         if (await LetBeOrPutBack(r, g, root, group, option, j.SavePath, cutFrom, item, savedFor.Name, ct,
                                  source, layers, end: end))
             return;
 
-        // ── the refit ──
+        // â”€â”€ the refit â”€â”€
         var outfit = partner != null
             ? OutfitPartners.Load(r.ModRoot!, partner, note => log.Information("[Proteus] auto refit: {0}: {1}", item, note))
             : null;
@@ -211,7 +215,7 @@ public sealed partial class AutoRefitWatcher
     }
 
     /// <summary>
-    /// What the piece was made on, read from what it reaches (<see cref="KeepEnds.Find"/>), or as it was read before —
+    /// What the piece was made on, read from what it reaches (<see cref="KeepEnds.Find"/>), or as it was read before â€”
     /// kept apart from the old way of reading by <see cref="KeepEnds.Reading.CacheSlot"/>.
     /// </summary>
     /// <param name="siblings">The chest or legs pieces of its own option (see <see cref="SiblingPiece.Find"/>).</param>
@@ -258,7 +262,7 @@ public sealed partial class AutoRefitWatcher
 
     /// <summary>
     /// What the chest or legs pieces shipped in the same option as this one were made on (see <see cref="SiblingPiece"/>),
-    /// each read off its own skin through <see cref="ReadSource"/> — in the slot and race its own refit reads it in
+    /// each read off its own skin through <see cref="ReadSource"/> â€” in the slot and race its own refit reads it in
     /// (<see cref="ReadAs"/>), so the reading is the very one that refit makes and keeps. Null when they cannot be read
     /// or do not agree.
     /// </summary>
@@ -299,7 +303,7 @@ public sealed partial class AutoRefitWatcher
         return partner;
     }
 
-    /// <summary>A file's state on disk — its length and time written — for a cache key; "-" when it is not there.</summary>
+    /// <summary>A file's state on disk â€” its length and time written â€” for a cache key; "-" when it is not there.</summary>
     private static string Stamp(string root, string file)
     {
         var info = new FileInfo(BodySizeCatalog.ResolveCaseInsensitive(root, file));
@@ -313,7 +317,7 @@ public sealed partial class AutoRefitWatcher
     /// <summary>
     /// The skin of a piece that reaches no leg or arm, drawn the way the new body draws its own (see
     /// <see cref="RefitCore.MatchSkinToBody(byte[], string, string, UVRemapService?, bool, IPluginLog)"/>); its shape is
-    /// the author's. Null when nothing changes — it is drawn so already, or its layout cannot be converted — and the piece
+    /// the author's. Null when nothing changes â€” it is drawn so already, or its layout cannot be converted â€” and the piece
     /// is not baked for another race, whose bake is itself a change worth saving. One only bent down to be read is not:
     /// the bend there and back changes nothing.
     /// </summary>
@@ -372,10 +376,10 @@ public sealed partial class AutoRefitWatcher
                           : j.State.Find(pick.Dir)?.Name ?? pick.Dir;
         // Between body mods by the legs or arms alone: the feet or hands ride along for their shape, on their own body.
         bool across = !string.Equals(pick.Dir, lead.Dir, StringComparison.OrdinalIgnoreCase);
-        string targetLabel = lead.Name + " — " + refit.Target.Label;
+        string targetLabel = lead.Name + " â€” " + refit.Target.Label;
         Say(string.Format(ProteusLoc.Localize("Chat.AutoRefit.Start.Fmt",
                 "[Proteus] Refitting {0} from {1} to {2}. It will be switched on when it is done."),
-                item, sourceName + " — " + pick.Option.Label, targetLabel));
+                item, sourceName + " â€” " + pick.Option.Label, targetLabel));
         current = current with { Message = string.Format(Strings.AutoRefit.WorkingFmt, item), Failed = false };
 
         BodyRetarget.BodyDraw? SourceMask(string s) => RefitCore.MaskOf(pick.Dir, sourceCat, s, OptionsOf(g.Settings, pick.Dir));
@@ -424,7 +428,7 @@ public sealed partial class AutoRefitWatcher
                       + "seam stretched up to {6:F1} mm over {7} edges)", item, slot, limb, plan.Report.Folded,
                         plan.Report.WorstMove * 1000f, feet ? "ankle" : "wrist", stretched * 1000f, seamEdges);
         if (stretched > KeepEnds.SeamWarn)
-            log.Warning("[Proteus] auto refit: {0}'s {1} seam stretched by {2:F1} mm — the kept {3} and the new body's {4} "
+            log.Warning("[Proteus] auto refit: {0}'s {1} seam stretched by {2:F1} mm â€” the kept {3} and the new body's {4} "
                       + "differ there; look at it in game", item, feet ? "ankle" : "wrist", stretched * 1000f,
                         feet ? "foot" : "hand", feet ? "legs" : "arms");
         if (RefitCore.ReleasedLog(plan.Report, reading.FreeNames ?? []) is { } released)
@@ -432,7 +436,7 @@ public sealed partial class AutoRefitWatcher
                             released);
 
         // After the seam is measured, which compares the plan with the garment as it was refitted: up, the kept skin
-        // named like the body's; down, bent back into the drawn race — or not saved at all.
+        // named like the body's; down, bent back into the drawn race â€” or not saved at all.
         var (finished, _, bentBack) = RefitCore.Finish(plan, j.Route, g.Wearer, targetPath, log);
         if (finished == null)
         {

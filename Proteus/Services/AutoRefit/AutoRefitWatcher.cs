@@ -190,7 +190,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
     private sealed record Request(string Slot, Worn Worn, string? Resolved, string? ModRoot, Guid Collection,
                                  bool Forced = false, IReadOnlyDictionary<string, Beside>? Beside = null,
                                  AutoRefitTargets.AccessoryChosen? Chosen = null, Worn? Walked = null,
-                                 PenumbraBridge.ModSettingsSnapshot? ModSettings = null);
+                                 PenumbraBridge.ModSettingsSnapshot? ModSettings = null, YabOutput? Output = null);
 
     /// <summary>A chest or legs piece worn beside an accessory at the walk: what it is, the file drawn and its mod.</summary>
     private sealed record Beside(Worn Worn, string? Resolved, string? ModRoot);
@@ -324,11 +324,29 @@ public sealed partial class AutoRefitWatcher : IDisposable
         RequestWalkIn(RedrawDebounceMs);
     }
 
-    private void OnModsChanged(string _) => RequestIndexIn(IndexDebounceMs);
+    private void OnModsChanged(string dir)
+    {
+        RequestIndexIn(IndexDebounceMs);
+        InvalidateFitSources(dir);
+    }
+
+    private long sourceRevision;
+    private readonly Dictionary<string, long> checkedSources = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> revealing = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> revealedSlots = new(StringComparer.Ordinal);
+
+    private void InvalidateFitSources(string dir)
+    {
+        if (string.IsNullOrEmpty(dir) || dir.StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase)
+            || dir.Equals(SidecarDiscoveryService.ManagedModDir, StringComparison.OrdinalIgnoreCase)) return;
+        Interlocked.Increment(ref sourceRevision);
+        RequestWalkIn(EquipSettleMs);
+    }
 
     private void OnModSettingChanged(Penumbra.Api.Enums.ModSettingChange change, Guid collection, string modDir,
                                      bool inherited)
     {
+        InvalidateFitSources(modDir);
         // Only an edit can change which sizes a mod publishes; a setting change cannot. Proteus's own managed mod is
         // rewritten by every composite and is never a body, so its edits are not a reason to look at 1000 mods again.
         if (change == Penumbra.Api.Enums.ModSettingChange.Edited
@@ -370,6 +388,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
     /// <summary>Refit every piece being worn now, as if each had just been put on.</summary>
     public void RunNow()
     {
+        Interlocked.Increment(ref sourceRevision);
         forceAll = true;
         Interlocked.Exchange(ref walkDueAt, Environment.TickCount64 + 1);
     }
@@ -398,7 +417,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         string? modsRoot = penumbra.GetModDirectory();
         var collection = penumbra.GetPlayerCollection();
-        var worn = ReadWorn(penumbra.GetActivePlayerModelPaths(), modsRoot, out _);
+        var worn = ReadWorn(penumbra.GetActivePlayerModelPaths(), modsRoot, out _, readOrigin: false);
         if (modsRoot is not { Length: > 0 } || collection is not { } c
             || !config.AutoRefitByCollection.TryGetValue(c.Id.ToString("D"), out var pref))
         {
@@ -815,14 +834,25 @@ public sealed partial class AutoRefitWatcher : IDisposable
         if (seenIn != collection.Id)
         {
             seenIn = collection.Id;
+            checkedSources.Clear();
+            revealing.Clear();
+            revealedSlots.Clear();
             lastSeen = null;
         }
 
-        var now = ReadWorn(models, penumbra.GetModDirectory(), out var resolvedOf);
+        string? modsRoot = penumbra.GetModDirectory();
+        if (modsRoot != null && config.AutoRefitByCollection.TryGetValue(collection.Id.ToString("D"), out var active)
+            && active.HasAnyBody() && (lastSeen != null || forceAll)
+            && RevealChangedSources(models!, modsRoot, collection.Id, active)) return;
+        var now = ReadWorn(models, modsRoot, out var resolvedOf);
 
         bool all = forceAll;
         forceAll = false;
         var changed = all ? now.Keys.ToList() : AutoRefitDecisions.Changed(lastSeen, now);
+        var freshlyRevealed = revealedSlots.ToHashSet(StringComparer.Ordinal);
+        foreach (string slot in freshlyRevealed)
+            if (now.ContainsKey(slot) && !changed.Contains(slot)) changed.Add(slot);
+        revealedSlots.Clear();
         lastSeen = now;
         if (changed.Count == 0) return;
 
@@ -837,7 +867,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         {
             var worn = now[slot];
             var (resolved, root, outside) = resolvedOf[slot];
-            if (ours.TryGetValue(slot + "|" + worn.GamePath, out long until) && tick < until) continue;
+            if (!all && !freshlyRevealed.Contains(slot) && ours.TryGetValue(slot + "|" + worn.GamePath, out long until) && tick < until) continue;
 
             var skip = AutoRefitDecisions.ShouldRefit(slot, worn, config.AutoRefitVanilla, outside);
             if (skip != AutoRefitDecisions.Skip.None)
@@ -884,12 +914,59 @@ public sealed partial class AutoRefitWatcher : IDisposable
         }
     }
 
+    // On the first use after a collection change, let Penumbra expose the actual underlying option.
+    // The empty Original option affects this garment only. Cached geometry can be selected again
+    // once the new source is known. Manual corrections never participate in this process.
+    private bool RevealChangedSources(HashSet<string> models, string modsRoot, Guid collection, AutoRefitPreference pref)
+    {
+        long revision = Interlocked.Read(ref sourceRevision);
+        bool waiting = false;
+        foreach (var (suffix, gamePath) in DrawnModelPaths.EquippedPartModelsFromModels(models)
+                     .Concat(DrawnModelPaths.EquippedAccessoryGarmentModelsFromModels(models)))
+        {
+            if (checkedSources.TryGetValue(gamePath, out long done) && done == revision) continue;
+            string? resolved = penumbra.ResolvePlayer(gamePath);
+            if (resolved != null && Path.IsPathRooted(resolved)
+                && HatCompatService.InMods(resolved, modsRoot, out string root, out string rel)
+                && Path.GetFileName(root).StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase)
+                && YabOutput.Read(root, rel, gamePath) != null)
+            {
+                string dir = Path.GetFileName(root);
+                string key = gamePath + "|" + dir;
+                if (!revealing.TryGetValue(key, out long until))
+                {
+                    var held = penumbra.GetModSettingsSnapshot(collection, dir);
+                    if (held is { Enabled: true, Temporary: false }
+                        && penumbra.SetModOption(collection, dir, "Fit", [BodyRetargetWriter.OriginalOption])
+                            is Penumbra.Api.Enums.PenumbraApiEc.Success or Penumbra.Api.Enums.PenumbraApiEc.NothingChanged)
+                    {
+                        pref.SwitchedOn.Remove(AutoRefitDecisions.GroupKey(dir, "Fit"));
+                        config.Save();
+                        revealing[key] = Environment.TickCount64 + 1500;
+                        revealedSlots.Add("_" + suffix);
+                        waiting = true;
+                        continue;
+                    }
+                }
+                else if (Environment.TickCount64 < until)
+                {
+                    waiting = true;
+                    continue;
+                }
+            }
+            checkedSources[gamePath] = revision;
+        }
+        if (waiting) RequestWalkIn(EquipSettleMs);
+        else revealing.Clear();
+        return waiting;
+    }
+
     /// <summary>What each body and accessory slot draws: the mod and file supplying it, or the game's own. Framework
     /// thread.</summary>
     /// <param name="resolvedOf">Per slot, the file the game resolved, the mod folder holding it, and whether it is a file
     /// outside Penumbra's mods altogether.</param>
     private Dictionary<string, Worn> ReadWorn(HashSet<string>? models, string? modsRoot,
-                                              out Dictionary<string, (string? Resolved, string? Root, bool Outside)> resolvedOf)
+                                              out Dictionary<string, (string? Resolved, string? Root, bool Outside)> resolvedOf, bool readOrigin = true)
     {
         var now = new Dictionary<string, Worn>(StringComparer.Ordinal);
         resolvedOf = new Dictionary<string, (string? Resolved, string? Root, bool Outside)>(StringComparer.Ordinal);
@@ -897,7 +974,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                                           .Concat(DrawnModelPaths.EquippedAccessoryGarmentModelsFromModels(models)))
         {
             string slot = "_" + suffix;
-            var (worn, resolved, root, outside) = Resolve(gamePath, modsRoot);
+            var (worn, resolved, root, outside) = Resolve(gamePath, modsRoot, readOrigin);
             now[slot] = worn;
             resolvedOf[slot] = (resolved, root, outside);
         }
@@ -906,12 +983,24 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
     /// <summary>What one game path draws for the player: the mod and file supplying it, or the game's own. Framework
     /// thread.</summary>
-    private (Worn Worn, string? Resolved, string? Root, bool Outside) Resolve(string gamePath, string? modsRoot)
+    private (Worn Worn, string? Resolved, string? Root, bool Outside) Resolve(string gamePath, string? modsRoot, bool readOrigin = true)
     {
         string? resolved = penumbra.ResolvePlayer(gamePath);
         if (resolved == null || !Path.IsPathRooted(resolved)) return (new Worn(gamePath, null, null), null, null, false);
         if (modsRoot != null && HatCompatService.InMods(resolved, modsRoot, out string root, out string rel))
-            return (new Worn(gamePath, Path.GetFileName(root), rel), resolved, root, false);
+            {
+            string dir = Path.GetFileName(root);
+            if (readOrigin && dir.StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var origin = YabOutput.Read(root, rel, gamePath);
+                if (origin == null) return (new Worn(gamePath, null, null), resolved, null, true);
+                if (origin.Directory == null) return (new Worn(gamePath, null, null), null, null, false);
+                string original = Path.Combine(modsRoot, origin.Directory, origin.File!);
+                if (!File.Exists(original)) return (new Worn(gamePath, null, null), resolved, null, true);
+                return (new Worn(gamePath, origin.Directory, origin.File), original, Path.Combine(modsRoot, origin.Directory), false);
+            }
+            return (new Worn(gamePath, dir, rel), resolved, root, false);
+        }
         return (new Worn(gamePath, null, null), resolved, null, true);
     }
 
@@ -1363,7 +1452,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         BodyOption? TargetFor(string slot) => targets.TargetFor(slot, primary);
 
         // ── an author's option sizing the chest and the legs together: one option for both refits ──
-        var together = PlanPair(r, g, lead, targets, redirects, ownRecord, item, TargetFor);
+        var together = YabOutput.IsYab(lead.Name) ? null : PlanPair(r, g, lead, targets, redirects, ownRecord, item, TargetFor);
 
         // Shoes and gloves keep their own feet and hands: only the legs or arms they reach are refitted. See KeepEnds.
         if (AutoRefitDecisions.LimbOf(primary) != null)
@@ -1491,7 +1580,9 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                 string.Join(", ", off));
         }
 
+        r = r with { Output = YabOutput.For(config, state.Version, lead.Name, sourceName, r.Worn.GamePath, bytes, r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
+        if (r.Output is { Layer: YabOutput.Base } && pick.Dir != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, lead, redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
         if (together != null) cutFrom = together.Plan.CutFrom;
@@ -1507,7 +1598,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         string? joined = null;
         if (together is { Plan: { Paired: true, Option: { } shared } })
             option = joined = shared;
-        else if (root != null && RefitCore.IsSharedSingleGroup(redirects, ownRecord, group, RefitCore.SingleGroups(root))
+        else if (r.Output == null && root != null && RefitCore.IsSharedSingleGroup(redirects, ownRecord, group, RefitCore.SingleGroups(root))
                  && RefitCore.JoinOption(ownRecord, group, savePath, targets.ChosenFiles(primary, lead, target, parts.Placed),
                                          TargetsOf(primary, target, others), option) is { } join
                  && join != option)
@@ -1534,6 +1625,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                               TargetMask("_top"), uvRemap, Note, out chestBeneathPair))
                 chestBeneathTo = chestTo;
         }
+        string FitOption(string name) => r.Output is { } fit ? name + " [" + fit.Stamp + "]" : name;
+        option = FitOption(option);
         if (await LetBeOrPutBack(r, g, root, group, option, savePath, cutFrom, item, lead.Name, ct,
                                  pick, chestBeneath: chestBeneathTo?.Rel, chestBeneathDir: chestDir))
             return;
@@ -1578,7 +1671,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                 targetPaths.Add(otherPath);
         }
         if (chestBeneathTo != null) pairs.Add(chestBeneathPair);
-        option = joined ?? OptionFor(kept);
+        option = FitOption(joined ?? OptionFor(kept));
         ct.ThrowIfCancellationRequested();
 
         AssertOffFramework("the refit");
@@ -1592,7 +1685,9 @@ public sealed partial class AutoRefitWatcher : IDisposable
         var plan = RefitCore.PlanRefit(garment, bytes, pairs, primary, across, gameGear, out var pieceNames,
                                        line => log.Debug("[Proteus] auto refit: {0}", line),
                                        line => log.Warning("[Proteus] auto refit: {0}", line),
-                                       carryPiercings: piercings);
+                                       carryPiercings: piercings, strength: primary == "_top" ? config.VanillaChestStrength : config.VanillaLegStrength,
+                                       transfer: r.Output == null || !config.UseYabField ? YabTransfer.Default
+                                           : pick.Dir == VanillaBodyCatalog.Key ? YabTransfer.Envelope : YabTransfer.Surface);
         plan = RefitCore.MatchSkinToBody(plan, sourcePath, targetPaths, uvRemap, male, log);
         // Up, the kept skin named like the body's; down, bent back into the drawn race — or not saved at all.
         var (finished, _, bentBack) = RefitCore.Finish(plan, route, g.Wearer, targetPaths, log);
@@ -1740,6 +1835,12 @@ public sealed partial class AutoRefitWatcher : IDisposable
     private (string? Root, string Group, string? CutFrom)? WhereItGoes(Request r, Gathered g, BodyModIndex.Entry targetMod,
                                                                        List<PenumbraModMeta.Redirect> redirects, string item)
     {
+        if (r.Output is { } output)
+        {
+            string? owned = RefitModService.Find(g.ModsRoot, output.Item, output.Layer);
+            if (owned != null && SettingsOf(g.Settings, Path.GetFileName(owned)) is { Enabled: false }) return null;
+            return (owned, "Fit", null);
+        }
         if (r.ModRoot == null)
         {
             string? made = RefitModService.Find(g.ModsRoot, g.Vanilla!.Value.ItemName, targetMod.Name);
@@ -1874,11 +1975,11 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                             string? cutFrom, RacialModelBake.Route route, string item, bool fromGame,
                                             BodyRetargetWriter.Provenance? provenance)
     {
-        bool isVanilla = r.ModRoot == null;
+        bool isVanilla = r.ModRoot == null || r.Output != null;
         if (root == null)
         {
-            var made = await OnFramework(() => refitMods.Ensure(g.Vanilla!.Value.ItemName, targetMod.Name,
-                                                                    folder: RefitModService.OwnModsFolder));
+            var made = await OnFramework(() => refitMods.Ensure(r.Output?.Item ?? g.Vanilla!.Value.ItemName, r.Output?.Layer ?? targetMod.Name,
+                                                                    folder: r.Output?.Folder ?? RefitModService.OwnModsFolder, priority: r.Output?.Priority));
             if (!made.Ok)
             {
                 Fail(r, string.Format(ProteusLoc.Localize("Chat.AutoRefit.Failed.Fmt", "[Proteus] Couldn't refit {0}: {1}"), item,
@@ -1899,6 +2000,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
         }
         // Every refit's write into a mod comes through here: the one place the test harness hears of it.
         HarnessNoteRefit(targetMod.Dir);
+        if (r.Output != null && RecordedFile(root, group, refit.Option, savePath) is { } written)
+            YabOutput.Remember(root, written, new(savePath, r.Worn.ModDir, r.Worn.Rel));
 
         if (await Apply(r, root, group, refit.Option, cutFrom, isVanilla, CancellationToken.None) is { } off)
         {
@@ -1924,7 +2027,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
     /// <summary>What chat calls the mod a refit was saved into.</summary>
     private static string SavedIn(Gathered g, string root, BodyModIndex.Entry targetMod)
-        => g.Vanilla is { } vanilla ? RefitModService.NameFor(vanilla.ItemName, targetMod.Name)
+        => Path.GetFileName(root).StartsWith(YabOutput.Prefix, StringComparison.OrdinalIgnoreCase) ? Path.GetFileName(root)
+         : g.Vanilla is { } vanilla ? RefitModService.NameFor(vanilla.ItemName, targetMod.Name)
          : g.Mods.TryGetValue(Path.GetFileName(root), out string? modName) && modName.Length > 0 ? modName
          : Path.GetFileName(root);
 
@@ -2346,7 +2450,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         });
 
         // A mod just made for the game's gear is still being registered; a setting written before it is, is lost.
-        if (madeForGame)
+        if (madeForGame || r.Output != null)
         {
             var until = Environment.TickCount64 + MadeModTimeoutMs;
             while (await OnFramework(() => refitMods.IsPending) && Environment.TickCount64 < until)
@@ -2358,7 +2462,13 @@ public sealed partial class AutoRefitWatcher : IDisposable
             // Marked again in this framework step: the registration wait above may have outlived the first mark.
             compositor.ExpectOwnRefitWrite(dir);
             var settings = penumbra.GetModSettings(r.Collection, dir);
-            if (madeForGame && settings is not { Enabled: true })
+            if (!authorSize && r.Output is { } output && settings?.Priority != output.Priority)
+            {
+                var priority = penumbra.SetModPriority(r.Collection, dir, output.Priority);
+                if (priority is not (Penumbra.Api.Enums.PenumbraApiEc.Success or Penumbra.Api.Enums.PenumbraApiEc.NothingChanged))
+                    return priority.ToString();
+            }
+            if ((madeForGame || r.Output != null) && settings is not { Enabled: true })
                 penumbra.SetModEnabled(r.Collection, dir, true);
 
             // The collection's OWN setting, beneath any design hold, and the hold's — each switched from what it has

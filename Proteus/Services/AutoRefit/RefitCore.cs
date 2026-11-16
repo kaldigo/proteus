@@ -1240,7 +1240,7 @@ internal static partial class RefitCore
                                                    string primary, bool across, bool gameGear, out List<string> pieceNames,
                                                    Action<string>? log = null, Action<string>? warn = null,
                                                    Action<string, SecondSkinWriter.Vec3[]>? trace = null,
-                                                   bool carryPiercings = false)
+                                                   bool carryPiercings = false, YabTransfer transfer = YabTransfer.Default, float? strength = null)
     {
         var skin = AutoRefitDecisions.SkinFor(gameGear);
         var pieces = ShapePieces(garment, DefaultKeepShape(garment), out pieceNames);
@@ -1251,7 +1251,7 @@ internal static partial class RefitCore
                                  deepClear: DeepClearFor(skin.DeepClear, primary),
                                  keepStandoff: KeepStandoffFor(skin.KeepStandoff, primary),
                                  carryPiercings: carryPiercings, seeInside: SeeInsideFor(skin.SeeInside, primary),
-                                 relaxSinkGuard: skin.RelaxSinkGuard, openSkin: true);
+                                 relaxSinkGuard: skin.RelaxSinkGuard, openSkin: true, transfer: transfer, fitStrength: strength);
     }
 
     /// <summary>

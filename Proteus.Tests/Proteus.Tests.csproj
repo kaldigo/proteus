@@ -84,6 +84,7 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(ProteusTestHarness)' != 'true'">
     <Compile Remove="TestHarness\**" />
+    <Compile Include="TestHarness\HarnessTimingCollection.cs" />
   </ItemGroup>
 
   <!-- Real .mtrl used by MtrlParseTests to check the parser against the actual file format rather than

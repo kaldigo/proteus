@@ -52,7 +52,7 @@ public sealed partial class PartsPanel
     /// A brush save on the game's own gear. Nothing to write makes no mod. On teardown nothing is made either: the
     /// mod could be registered but never switched on, and the next edit would find it switched off.
     /// </summary>
-    private void SaveVanillaBrush(VanillaPick piece, bool refreshGame)
+    private void SaveVanillaBrush(VanillaPick piece, bool refreshGame, int? priority = null)
     {
         if (volume == null || brushBase == null || modelIndex < 0 || !volume.Dirty)
         {
@@ -67,6 +67,11 @@ public sealed partial class PartsPanel
             return;
         }
 
+        if (fitConfig.SeparateGearCorrections && piece.Refittable)
+        {
+            priority ??= fitConfig.ManualFitPriority;
+            piece = piece with { ItemName = YabOutput.Prefix + "Manual " + Path.GetFileNameWithoutExtension(piece.GamePath) };
+        }
         // Built in memory before any mod is made, so an edit that cannot be written is said once, with no folder made
         // and rolled back on every retry.
         try { MeshVolumeService.Inflate(brushBase, volume); }
@@ -86,7 +91,7 @@ public sealed partial class PartsPanel
             {
                 result = MeshVolumeService.Apply(root, rel, gameBytes, solve, writeUntouched: true);
                 return new VanillaEditCopy.FirstWrite(result.Ok, result.Message);
-            }, out bool written) is not { } copy)
+            }, out bool written, priority) is not { } copy)
         {
             if (written) { brushChangedAt = -1; return; }   // saved, though the panel could not carry on in the copy
             // Still waiting: retried on the debounce, as a failed save is — deleting a refused mod lets it through.
@@ -156,7 +161,7 @@ public sealed partial class PartsPanel
     /// </summary>
     /// <param name="written">Set when the change was saved although null is returned: the mod had no row to carry on in.</param>
     private (string Root, bool Made)? CopyVanillaForEdit(VanillaPick piece, Func<string, string, VanillaEditCopy.FirstWrite> write,
-                                                         out bool written)
+                                                         out bool written, int? priority = null)
     {
         written = false;
         var ps = Strings.Parts;
@@ -174,7 +179,7 @@ public sealed partial class PartsPanel
                                    && penumbra.GetModSettings(coll, dir) is { } s ? s.Enabled : null,
                 ensure: fill => refitMods.Ensure(piece.ItemName, RefitModService.EditQualifier, fill,
                                                  description: string.Format(ps.VanillaModDescriptionFmt, piece.ItemName),
-                                                 folder: RefitModService.OwnModsFolder),
+                                                 folder: priority.HasValue ? "Proteus/" + YabOutput.Manual : RefitModService.OwnModsFolder, priority: priority),
                 firstWrite: write);
         }
         catch (Exception ex)

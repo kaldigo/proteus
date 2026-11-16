@@ -23,7 +23,7 @@ public class PartsPanelMoveAllTests
     {
         string main = File.ReadAllText(Path.Combine(Gui(), "PartsPanel.cs"));
         string all = Path.Combine(Gui(), "PartsPanel.MoveAll.cs");
-        return File.Exists(all) ? main + "\n" + File.ReadAllText(all) : main;
+        return File.Exists(all) ? (main + "\n" + File.ReadAllText(all)).ReplaceLineEndings("\n") : main.ReplaceLineEndings("\n");
     }
 
     /// <summary>The body of the first method whose signature contains <paramref name="signature"/>, braces matched.</summary>

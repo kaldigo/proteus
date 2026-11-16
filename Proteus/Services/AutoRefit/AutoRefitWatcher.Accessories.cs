@@ -229,6 +229,8 @@ public sealed partial class AutoRefitWatcher
         }
 
         // ── where it goes: sized with other pieces in one of the author's groups, into their refit, or not at all ──
+        r = r with { Output = YabOutput.For(config, state.Version, lead.Name, NameIn(state, pickOf.Dir), r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? 0) };
+        if (r.Output is { Layer: YabOutput.Base } && pickOf.Dir != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, lead, redirects, item) is not { } where) return;
         var (saveRoot, group, cutFrom) = where;
         var onBodies = covered.Where(sources.ContainsKey).Select(s => (Body: placed[s].Body.Name, placed[s].To.Label)).ToList();
@@ -240,7 +242,7 @@ public sealed partial class AutoRefitWatcher
             if (placed.TryGetValue(slot, out var at)) chosenFiles[slot] = (at.Body.Dir, at.To.Rel);
             else if (TargetFor(slot) is { } to) chosenFiles[slot] = (targets.DirOf(slot), to.Rel);
         string proposed = RefitCore.OptionName(onBodies);
-        bool shared = saveRoot != null
+        bool shared = r.Output == null && saveRoot != null
                       && RefitCore.IsSharedSingleGroup(redirects, ownRecord, group, RefitCore.SingleGroups(saveRoot));
         string? sharedOption = AccessoryCover.SharedOption(
             shared, proposed,
@@ -273,6 +275,7 @@ public sealed partial class AutoRefitWatcher
                                                   BodyRetargetWriter.ReadRecord(root), Note, lead.Dir);
         }
         var layers = partner != null ? OutfitPartners.LayersOf(root, partner) : null;
+        if (r.Output is { } fit) option += " [" + fit.Stamp + "]";
         if (await LetBeOrPutBack(r, g, saveRoot, group, option, r.Worn.GamePath, cutFrom, item, lead.Name, ct, pickOf,
                                  layers))
             return;

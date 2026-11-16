@@ -10,7 +10,7 @@ namespace Proteus.Services;
 /// <summary>
 /// Recovery from a shell that did not make it onto the character (#91 and the owner's report on its message):
 /// <list type="bullet">
-/// <item>an output file that could not be put in place is never recorded as published — a retry composite runs on its
+/// <item>an output file that could not be put in place is never recorded as published â€” a retry composite runs on its
 /// own timer, bounded by <see cref="OutputWriteRetry"/>, and a give-up names the accessory once;</item>
 /// <item>a published shell the game does not draw gets one automatic full redraw, then one message naming the accessory
 /// (<see cref="ShellNotDrawnNotice"/>).</item>
@@ -49,11 +49,10 @@ public partial class CompositorService
     /// Whether Proteus redraws on its own: the setting, or the test harness's session-only override (ADR 0002). Every
     /// compositor read goes through here; the shader-upgrade and variant watchers keep reading the setting.
     /// </summary>
+#if PROTEUS_TEST_HARNESS
     internal bool AutoRedrawOn => HarnessAutoRedrawOverride ?? config.AutoRedraw;
-
-#if !PROTEUS_TEST_HARNESS
-    /// <summary>No harness in this build: never overridden.</summary>
-    private static bool? HarnessAutoRedrawOverride => null;
+#else
+    internal bool AutoRedrawOn => config.AutoRedraw;
 #endif
 
     /// <summary>Something Copy Logs should wait for before it reads the log: a composite pending or running, a
@@ -97,22 +96,22 @@ public partial class CompositorService
         switch (d.Kind)
         {
             case OutputWriteRetry.Kind.Retry when autoRedraw:
-                log.Information("[Proteus] output write failed for {0} file(s) — retrying in {1}ms (attempt {2}/{3})",
+                log.Information("[Proteus] output write failed for {0} file(s) â€” retrying in {1}ms (attempt {2}/{3})",
                     failures, d.DelayMs, d.Attempt, OutputWriteRetry.PerFingerprint);
                 ScheduleWriteRetry(d.DelayMs, stamp);
                 break;
             case OutputWriteRetry.Kind.Retry:
-                log.Information("[Proteus] output write failed for {0} file(s) — auto redraw is off, so not retrying; the "
+                log.Information("[Proteus] output write failed for {0} file(s) â€” auto redraw is off, so not retrying; the "
                               + "next recomposite rebuilds it", failures);
                 break;
             case OutputWriteRetry.Kind.GiveUp:
                 if (!d.Warn)
                 {
-                    log.Information("[Proteus] output write failed for {0} file(s) again — retries already given up for "
+                    log.Information("[Proteus] output write failed for {0} file(s) again â€” retries already given up for "
                                   + "these inputs", failures);
                     break;
                 }
-                log.Warning("[Proteus] output write failed for {0} file(s) after {1} attempt(s) — giving up until the "
+                log.Warning("[Proteus] output write failed for {0} file(s) after {1} attempt(s) â€” giving up until the "
                           + "inputs change. The files are held by something else (the game, a sync tool, an antivirus)",
                     failures, d.Attempt);
                 if (failedHosts.Count > 0) PrintShellNotice(failedHosts, partly: true);
@@ -122,7 +121,7 @@ public partial class CompositorService
     }
 
     /// <summary>
-    /// After <paramref name="delayMs"/>, one retry composite for a failed write (#91) — on its own timer, never taking the
+    /// After <paramref name="delayMs"/>, one retry composite for a failed write (#91) â€” on its own timer, never taking the
     /// debounce token of a trigger already pending: it waits while a composite is pending or redraws are held, and does
     /// nothing if another publish has run since (that publish ran the latch).
     /// </summary>
@@ -167,7 +166,7 @@ public partial class CompositorService
         if (hostModels.Count == 0) return;
         int? glassesSet = null;
         try { glassesSet = InvisibleGlasses.Resolve(Plugin.DataManager, log)?.ModelSet; }
-        catch (Exception ex) { log.Debug("[Proteus] invisible glasses unknown — no carrier wording for them ({0})", ex.Message); }
+        catch (Exception ex) { log.Debug("[Proteus] invisible glasses unknown â€” no carrier wording for them ({0})", ex.Message); }
         bool redrawOff = !AutoRedrawOn;
         foreach (var group in hostModels.GroupBy(m => ShellNotDrawnNotice.IsCarrierHost(m, glassesSet)).OrderBy(g => g.Key))
         {
@@ -199,7 +198,7 @@ public partial class CompositorService
 
     /// <summary>
     /// A published shell is partly or not drawn while its host is: one automatic redraw (no chat), or a deferral, or the
-    /// message naming the accessory — see <see cref="ShellNotDrawnNotice.Next"/>.
+    /// message naming the accessory â€” see <see cref="ShellNotDrawnNotice.Next"/>.
     /// </summary>
     private void DecideUndrawn(ShellDrawnProbe expected, bool reloadWithheld, RefreshTimeline? timeline,
                                IReadOnlyList<string> missing, bool partly, bool afterOwnRedraw, int extra)
@@ -215,14 +214,14 @@ public partial class CompositorService
                 _shellDrawnLastStep = "auto-redraw";
                 _shellAutoRedrawKey = key;
                 NoteAutoRedraw();
-                log.Information("[Proteus] second skin not drawn — redrawing the character once before saying anything");
+                log.Information("[Proteus] second skin not drawn â€” redrawing the character once before saying anything");
 #if PROTEUS_TEST_HARNESS
                 HarnessBeforeOwnShellRedraw(expected);
 #endif
                 bool reached;
                 try
                 {
-                    reached = RedrawPlayerLogged("second skin not drawn — one automatic redraw",
+                    reached = RedrawPlayerLogged("second skin not drawn â€” one automatic redraw",
                         () => Plugin.Framework.RunOnFrameworkThread(penumbra.RedrawPlayer).GetAwaiter().GetResult());
                 }
                 catch (OperationCanceledException) { return; }
@@ -234,7 +233,7 @@ public partial class CompositorService
 
             case ShellNotDrawnNotice.Step.Defer:
                 _shellDrawnLastStep = "defer";
-                log.Information("[Proteus] second skin not drawn — {0}; checking once more before saying anything",
+                log.Information("[Proteus] second skin not drawn â€” {0}; checking once more before saying anything",
                     expected.PublishedWithWriteFailures ? "its publish had write failures, which the retry composite owns"
                     : redrawHold.IsHeld ? "redraws are held for an auto refit batch" : "a composite is pending");
                 ScheduleShellRecheck(expected, reloadWithheld, timeline, 0, 3000, afterOwnRedraw, extra + 1);
@@ -247,7 +246,7 @@ public partial class CompositorService
 
             default:
                 _shellDrawnLastStep = "silent";
-                log.Debug("[Proteus] second skin not drawn — superseded or already reported; nothing said");
+                log.Debug("[Proteus] second skin not drawn â€” superseded or already reported; nothing said");
                 return;
         }
     }
@@ -272,7 +271,7 @@ public partial class CompositorService
         if (!afterOwnRedraw) return false;
         if (extra < 1)
         {
-            log.Information("[Proteus] second skin drawn check after the automatic redraw was inconclusive — once more");
+            log.Information("[Proteus] second skin drawn check after the automatic redraw was inconclusive â€” once more");
             ScheduleShellRecheck(expected, reloadWithheld, null, 0, 3000, afterOwnRedraw: true, extra: extra + 1);
         }
         else

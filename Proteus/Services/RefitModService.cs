@@ -132,7 +132,7 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
     /// stays wherever the player has since put it.
     /// </param>
     internal Result Ensure(string itemName, string bodyName, Action<string>? fill = null, string? description = null,
-                           string? folder = null)
+                           string? folder = null, int? priority = null)
     {
         if (penumbra.GetModDirectory() is not { Length: > 0 } modsRoot)
             return new(false, "", "", ProteusLoc.Localize("Service.NoPenumbraDir", "Penumbra's mod directory isn't available."));
@@ -184,7 +184,7 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
                 "Wrote the mod, but Penumbra couldn't register it ({0}). Rescan mods in Penumbra."), ec));
         }
 
-        pending = new Pending(dirName, modName, Environment.TickCount64 + ActivateTimeoutMs, ListPath(folder, modName));
+        pending = new Pending(dirName, modName, Environment.TickCount64 + ActivateTimeoutMs, ListPath(folder, modName), priority, priority.HasValue ? penumbra.GetPlayerCollectionId() : null);
         nextAttempt = 0;
         log.Information("[Proteus] made refit mod {0} for {1}", dirName, want);
         return new(true, root, dirName, "", Made: true);
@@ -223,7 +223,7 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
             pending = p = p with { ListPath = null };
         }
 
-        var collId = penumbra.GetPlayerCollectionId();
+        var collId = p.Collection ?? penumbra.GetPlayerCollectionId();
         if (collId == null)
         {
             // Not a reason to wait: no collection is a standing state, not a loading one.
@@ -233,6 +233,16 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
 
         // Ask, then read back: a discarded write still reports Success.
         if (ownedByAutoRefit) compositor.ExpectOwnRefitWrite(p.DirName);
+        if (p.Priority is { } priority)
+        {
+            var ec = penumbra.SetModPriority(collId.Value, p.DirName, priority);
+            if (ec is not (PenumbraApiEc.Success or PenumbraApiEc.NothingChanged))
+            {
+                if (now < p.Deadline) return null;
+                log.Warning("[Proteus] could not set {0} to priority {1}: {2}", p.DirName, priority, ec);
+                return Done(p, enabled: false);
+            }
+        }
         penumbra.SetModEnabled(collId.Value, p.DirName, true);
         if (penumbra.GetModSettings(collId.Value, p.DirName) is { Enabled: true }) return Done(p, enabled: true);
 
@@ -309,7 +319,7 @@ internal sealed class RefitModService(PenumbraBridge penumbra, CompositorService
         => string.IsNullOrWhiteSpace(folder) ? null : $"{folder}/{modName.Replace('/', '-')}";
 
     /// <param name="ListPath">Where to file it in Penumbra's mod list; null once done, or never asked.</param>
-    private record struct Pending(string DirName, string ModName, long Deadline, string? ListPath);
+    private record struct Pending(string DirName, string ModName, long Deadline, string? ListPath, int? Priority, Guid? Collection);
 
     private Pending? pending;
     private long nextAttempt;

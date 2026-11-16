@@ -369,10 +369,13 @@ public sealed partial class PartsPanel
     /// </summary>
     private const long PreviewIntervalMs = 150;
 
+    private readonly Configuration fitConfig;
+
     public PartsPanel(
         PenumbraBridge penumbra, CompositorService compositor, PartViewport viewport, LiveBrush liveBrush,
         TextureLoader textureLoader, UVRemapService uvRemap, Configuration config, IPluginLog log)
     {
+        fitConfig = config;
         this.penumbra = penumbra;
         this.compositor = compositor;
         this.viewport = viewport;
@@ -3488,6 +3491,15 @@ public sealed partial class PartsPanel
         {
             brushChangedAt = -1;
             lastSave = LivePreviewPolicy.RecordAfterSave(LivePreviewPolicy.SaveOutcome.NothingWritten, lastSave, () => null);
+            return;
+        }
+
+        if (fitConfig.SeparateGearCorrections && !modDir.StartsWith(YabOutput.Prefix + "Manual ", StringComparison.OrdinalIgnoreCase)
+            && VanillaPick.From(models[modelIndex].GamePath, itemNames ??= ItemNames.Lookup(Plugin.DataManager, log)) is { Refittable: true } gear
+            && penumbra.GetPlayerCollectionId() is { } collection)
+        {
+            var priority = penumbra.GetModSettings(collection, modDir)?.Priority ?? 0;
+            SaveVanillaBrush(gear, refreshGame, Math.Max(fitConfig.ManualFitPriority, YabOutput.Above(priority)));
             return;
         }
 
