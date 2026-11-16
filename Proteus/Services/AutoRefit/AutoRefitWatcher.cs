@@ -928,7 +928,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
         foreach (var (suffix, gamePath) in DrawnModelPaths.EquippedPartModelsFromModels(models)
                      .Concat(DrawnModelPaths.EquippedAccessoryGarmentModelsFromModels(models)))
         {
-            if (checkedSources.TryGetValue(gamePath, out long done) && done == revision) continue;
+            bool checkedThisRevision = checkedSources.TryGetValue(gamePath, out long done) && done == revision;
+            if (checkedThisRevision && revealing.Count == 0) continue;
             string? resolved = penumbra.ResolvePlayer(gamePath);
             if (resolved != null && Path.IsPathRooted(resolved)
                 && HatCompatService.InMods(resolved, modsRoot, out string root, out string rel)
@@ -939,6 +940,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                 string key = gamePath + "|" + dir;
                 if (!revealing.TryGetValue(key, out long until))
                 {
+                    if (checkedThisRevision) continue;
                     var held = penumbra.GetModSettingsSnapshot(collection, dir);
                     if (held is { Enabled: true, Temporary: false }
                         && penumbra.SetModOption(collection, dir, "Fit", [BodyRetargetWriter.OriginalOption])
@@ -946,6 +948,9 @@ public sealed partial class AutoRefitWatcher : IDisposable
                     {
                         pref.SwitchedOn.Remove(AutoRefitDecisions.GroupKey(dir, "Fit"));
                         config.Save();
+                        // Original can fall back to a different race path. The path hidden here
+                        // may disappear on the next walk and only return after the fit is restored.
+                        checkedSources[gamePath] = revision;
                         revealing[key] = Environment.TickCount64 + 1500;
                         revealedSlots.Add("_" + suffix);
                         waiting = true;
@@ -1960,6 +1965,15 @@ public sealed partial class AutoRefitWatcher : IDisposable
             return false;
         }
 
+        string dir = Path.GetFileName(root);
+        bool multi = RefitCore.IsMulti(root, group);
+        if (AutoRefitDecisions.FitSelected(SettingsOf(g.Settings, dir), group, option, cutFrom, multi, r.Output?.Priority)
+            && AutoRefitDecisions.FitSelected(SettingsOf(g.Permanent, dir), group, option, cutFrom, multi, r.Output?.Priority))
+        {
+            Outcome(r, onTarget: true, source, RecordedFile(root, group, option, savePath));
+            return true;
+        }
+
         if (await Apply(r, root, group, option, cutFrom, r.ModRoot == null, ct) is { } offExisting)
         {
             Fail(r, string.Format(ProteusLoc.Localize("Chat.AutoRefit.Failed.Fmt", "[Proteus] Couldn't refit {0}: {1}"),
@@ -2619,10 +2633,9 @@ public sealed partial class AutoRefitWatcher : IDisposable
     {
         if (finished.Count == 0) return;
         string fmt = ProteusLoc.Localize("Chat.AutoRefit.Summary.Fmt", "[Proteus] Refitted to {0}: {1}.");
-        var byBody = finished.GroupBy(f => f.Body, StringComparer.Ordinal)
-                             .Select(g => string.Format(fmt, g.Key, string.Join(", ", g.Select(f => f.Item).Distinct())));
+        string message = AutoRefitDecisions.BatchSummary(finished, fmt);
         finished.Clear();
-        Chat(string.Join(" ", byBody), problem: false);
+        Chat(message, problem: false);
     }
 
     /// <summary>

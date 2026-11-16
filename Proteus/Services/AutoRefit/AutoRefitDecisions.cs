@@ -11,6 +11,19 @@ namespace Proteus.Services;
 /// </summary>
 internal static class AutoRefitDecisions
 {
+    internal static bool FitSelected(Interop.PenumbraBridge.ModSettingsSnapshot? settings, string group,
+                                     string option, string? cutFrom, bool multi, int? priority)
+    {
+        if (settings is not { Enabled: true } active || (priority.HasValue && active.Priority != priority)) return false;
+        var current = active.Options.FirstOrDefault(o => string.Equals(o.Key, group, StringComparison.OrdinalIgnoreCase)).Value;
+        return current != null && current.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .SetEquals(RefitCore.SelectionFor(multi, option, current, cutFrom));
+    }
+
+    internal static string BatchSummary(IEnumerable<(string Item, string Body)> finished, string format)
+        => string.Join(" ", finished.GroupBy(f => f.Body, StringComparer.Ordinal)
+            .Select(g => string.Format(format, g.Key, string.Join(", ", g.Select(f => f.Item).Distinct()))));
+
     /// <summary>The body slots the automatic refit acts on, in the order a design changing several is worked through.</summary>
     internal static readonly string[] Slots = ["_top", "_dwn", "_glv", "_sho"];
 

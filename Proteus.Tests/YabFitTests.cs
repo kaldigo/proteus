@@ -11,6 +11,31 @@ namespace Proteus.Tests;
 public class YabFitTests
 {
     [Fact]
+    public void Existing_fit_only_needs_applying_when_the_collection_would_change()
+    {
+        var settings = new Proteus.Interop.PenumbraBridge.ModSettingsSnapshot(true, -1,
+            new() { ["Fit"] = ["Medium", "Extra"] }, false, false);
+        bool Selected(bool multi, string? cut = null, int priority = -1) =>
+            AutoRefitDecisions.FitSelected(settings, "Fit", "Medium", cut, multi, priority);
+        Assert.True(Selected(true));
+        Assert.False(Selected(true, "Extra"));
+        Assert.False(Selected(false));
+        Assert.False(Selected(true, priority: 4));
+        settings.Options["Fit"] = ["Medium"];
+        Assert.True(Selected(false));
+        Assert.False(AutoRefitDecisions.FitSelected(settings with { Enabled = false }, "Fit", "Medium", null, false, -1));
+    }
+
+    [Fact]
+    public void Chat_summary_keeps_completed_items_after_the_batch_is_cleared()
+    {
+        System.Collections.Generic.List<(string Item, string Body)> batch = [("Tekko #55", "YAB+"), ("Tekko #55", "YAB+")];
+        string message = AutoRefitDecisions.BatchSummary(batch, "{0}: {1}");
+        batch.Clear();
+        Assert.Equal("YAB+: Tekko #55", message);
+    }
+
+    [Fact]
     public void Routes_and_cache_keys_follow_sources_and_solver_settings()
     {
         var config = new Configuration { BaseFitPriority = -1, SizeFitPriority = 2 };
