@@ -56,10 +56,11 @@ public class YabFitTests
     public void Higher_priority_source_only_suppresses_the_base_output()
     {
         var baseFit = new YabOutput("model", YabOutput.Base, 0, "key");
-        Assert.True(baseFit.HiddenBySource(4));
-        Assert.False(baseFit.HiddenBySource(null));
-        Assert.False(baseFit.HiddenBySource(-1));
-        Assert.False((baseFit with { Layer = YabOutput.Resize, Priority = 7 }).HiddenBySource(4));
+        Assert.True(baseFit.HiddenBySource(4, "model", "model"));
+        Assert.False(baseFit.HiddenBySource(4, "c0101.mdl", "c0201.mdl"));
+        Assert.False(baseFit.HiddenBySource(null, "model", "model"));
+        Assert.False(baseFit.HiddenBySource(-1, "model", "model"));
+        Assert.False((baseFit with { Layer = YabOutput.Resize, Priority = 7 }).HiddenBySource(4, "model", "model"));
     }
 
     [Fact]

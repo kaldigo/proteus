@@ -235,7 +235,7 @@ public sealed partial class AutoRefitWatcher
 
         // ── where it goes: sized with other pieces in one of the author's groups, into their refit, or not at all ──
         r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pickOf.Dir), lead.Name, NameIn(state, pickOf.Dir), r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? 0) };
-        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority) == true)
+        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority, r.Worn.GamePath, r.Worn.GamePath) == true)
         {
             log.Information("[Proteus] auto refit: {0} takes priority over the generated base fit; keeping the source", item);
             return;

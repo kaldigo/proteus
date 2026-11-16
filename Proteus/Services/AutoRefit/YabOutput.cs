@@ -18,8 +18,8 @@ internal sealed record YabOutput(string Item, string Layer, int Priority, string
            || body.Contains("YAB", StringComparison.OrdinalIgnoreCase);
     internal static string Key(string value)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16];
-    internal bool HiddenBySource(int? sourcePriority)
-        => Layer == Base && sourcePriority > Priority;
+    internal bool HiddenBySource(int? sourcePriority, string sourcePath, string outputPath)
+        => Layer == Base && sourcePriority > Priority && RefitCore.Normal(sourcePath) == RefitCore.Normal(outputPath);
 
     internal static int Above(int priority) => priority == int.MaxValue ? priority : priority + 1;
 

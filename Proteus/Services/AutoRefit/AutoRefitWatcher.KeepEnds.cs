@@ -138,7 +138,7 @@ public sealed partial class AutoRefitWatcher
         var savedFor = decision is KeepEnds.SkinOnly ? j.Targets.Body(reading.Slot) ?? lead : lead;
         var sourceBody = decision is KeepEnds.Refit sizedFrom ? sizedFrom.Source.Dir : ((KeepEnds.SkinOnly)decision).Own.Dir;
         r = r with { Output = YabOutput.For(config, InputVersion(g, r, j.State.Version, sourceBody), savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
-        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority) == true)
+        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority, r.Worn.GamePath, j.SavePath) == true)
         {
             log.Information("[Proteus] auto refit: {0} takes priority over the generated base fit; keeping the source", item);
             return;

@@ -1586,7 +1586,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
-        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority) == true)
+        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority, r.Worn.GamePath, savePath) == true)
         {
             log.Information("[Proteus] auto refit: {0} takes priority over the generated base fit; keeping the source", item);
             return;
