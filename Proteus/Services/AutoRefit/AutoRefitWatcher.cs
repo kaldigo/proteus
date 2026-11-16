@@ -1536,7 +1536,8 @@ public sealed partial class AutoRefitWatcher : IDisposable
         }
         // A coat may expose skin only at the neck. Its hanging panels can still need
         // the selected leg shape for the clearance calculation.
-        bool longCoat = isVanilla && primary == "_top" && config.UseYabField && YabOutput.IsYab(lead.Name)
+        bool longCoat = isVanilla && pick.Dir == VanillaBodyCatalog.Key && primary == "_top" && config.UseYabField && YabOutput.IsYab(lead.Name)
+                        && targets.Body("_dwn") is { } legBody && YabOutput.IsYab(legBody.Name)
                         && garment.Min.Y < .69f && TargetFor("_dwn") != null && YabFitField.LongPanels(BodyRetarget.Sets.From(garment)) != null;
         if (longCoat && !otherFrom.ContainsKey("_dwn") && VanillaSource(vanillaCat, "_dwn", race) is { } legs)
             reachedFrom.Add(("_dwn", legs.Option));
@@ -1702,6 +1703,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                        line => log.Warning("[Proteus] auto refit: {0}", line),
                                        carryPiercings: piercings, strength: primary == "_top" ? config.VanillaChestStrength : config.VanillaLegStrength,
                                        transfer: r.Output == null || !config.UseYabField ? YabTransfer.Default
+                                           : longCoat ? YabTransfer.LongCoatEnvelope
                                            : pick.Dir == VanillaBodyCatalog.Key ? YabTransfer.Envelope : YabTransfer.Surface);
         plan = RefitCore.MatchSkinToBody(plan, sourcePath, targetPaths, uvRemap, male, log);
         // Up, the kept skin named like the body's; down, bent back into the drawn race — or not saved at all.

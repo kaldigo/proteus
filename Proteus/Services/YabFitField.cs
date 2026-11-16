@@ -6,7 +6,7 @@ using Vec3 = Proteus.Services.SecondSkinWriter.Vec3;
 
 namespace Proteus.Services;
 
-internal enum YabTransfer { Default, Envelope, Surface }
+internal enum YabTransfer { Default, Envelope, Surface, LongCoatEnvelope }
 
 internal static class YabFitField
 {
@@ -20,11 +20,11 @@ internal static class YabFitField
         bool[]? panels = null;
         Envelope? coatBody = null;
         SideSeams? seams = null;
-        if (method == YabTransfer.Envelope)
+        if (method is YabTransfer.Envelope or YabTransfer.LongCoatEnvelope)
         {
             var torso = new Envelope(bodies, false);
             var thigh = new Envelope(bodies, true);
-            if (slot == "_top" && bodies.Any(body => body.Slot == "_dwn"))
+            if (method == YabTransfer.LongCoatEnvelope && slot == "_top" && bodies.Any(body => body.Slot == "_dwn"))
             {
                 panels = LongPanels(sets);
                 if (panels != null)
