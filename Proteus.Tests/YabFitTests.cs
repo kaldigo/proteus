@@ -176,6 +176,20 @@ public class YabFitTests
         Assert.InRange(delta[i].Z,.026f,.032f);
     }
 
+    [Fact]
+    public void Drape_requires_a_connected_wide_panel_extending_from_hip_to_thigh()
+    {
+        var loose = Cylinder(.23f);
+        var sets = BodyRetarget.Sets.From(loose);
+        var panels = YabFitField.LongPanels(sets);
+        Assert.NotNull(panels);
+        Assert.Contains(sets.ClothNodes, i => panels[i] && sets.NodeAt[i].Y < .69f);
+        Assert.DoesNotContain(sets.ClothNodes, i => panels[i] && sets.NodeAt[i].Y > 1.14f);
+        Assert.Null(YabFitField.LongPanels(BodyRetarget.Sets.From(Cylinder(.10f))));
+        for (int i = 1; i < loose.Positions.Length; i += 3) loose.Positions[i] += .40f;
+        Assert.Null(YabFitField.LongPanels(BodyRetarget.Sets.From(loose)));
+    }
+
     private static ModelParts Cylinder(float radius)
     {
         const int sides=32;

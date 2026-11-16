@@ -1534,6 +1534,12 @@ public sealed partial class AutoRefitWatcher : IDisposable
             if (slot == primary || !otherFrom.TryGetValue(slot, out string? fromRel)) continue;
             if (OptionByFile(sourceCat.For(slot, race), fromRel) is { } from) reachedFrom.Add((slot, from));
         }
+        // A coat may expose skin only at the neck. Its hanging panels can still need
+        // the selected leg shape for the clearance calculation.
+        bool longCoat = isVanilla && primary == "_top" && config.UseYabField && YabOutput.IsYab(lead.Name)
+                        && garment.Min.Y < .69f && TargetFor("_dwn") != null && YabFitField.LongPanels(BodyRetarget.Sets.From(garment)) != null;
+        if (longCoat && !otherFrom.ContainsKey("_dwn") && VanillaSource(vanillaCat, "_dwn", race) is { } legs)
+            reachedFrom.Add(("_dwn", legs.Option));
         var parts = targets.PlanParts(primary, lead, target, pick.Dir, pick.Option, reachedFrom);
         var dropped = new List<string>();
         foreach (var left in parts.Left)
@@ -1584,7 +1590,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                 string.Join(", ", off));
         }
 
-        r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
+        r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir) + (longCoat ? "|coat-panels-v1" : ""), lead.Name, sourceName, r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
         if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority, r.Worn.GamePath, savePath) == true)
         {

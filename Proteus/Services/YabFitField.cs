@@ -17,10 +17,22 @@ internal static class YabFitField
         var bodies = pairs.Where(p => p.Slot is "_top" or "_dwn").ToArray();
         if (bodies.Length == 0) return;
         Func<Vector3, Vector3?> sample;
+        bool[]? panels = null;
+        Envelope? coatBody = null;
+        SideSeams? seams = null;
         if (method == YabTransfer.Envelope)
         {
             var torso = new Envelope(bodies, false);
             var thigh = new Envelope(bodies, true);
+            if (slot == "_top" && bodies.Any(body => body.Slot == "_dwn"))
+            {
+                panels = LongPanels(sets);
+                if (panels != null)
+                {
+                    coatBody = torso;
+                    seams = new SideSeams(sets, panels);
+                }
+            }
             sample = p =>
             {
                 var trunk = torso.Sample(p);
@@ -41,8 +53,100 @@ internal static class YabFitField
         {
             if (snapped[index]) continue;
             var at = sets.NodeAt[index];
-            if (sample(new(at.X, at.Y, at.Z)) is { } shift)
-                deltas[index] = new(shift.X, shift.Y, shift.Z);
+            var point = new Vector3(at.X, at.Y, at.Z);
+            if (sample(point) is not { } shift) continue;
+            if (panels?[index] == true)
+                shift = coatBody!.PanelShift(point, shift, Math.Clamp(strength ?? .75f, 0, 1.5f), seams!);
+            deltas[index] = new(shift.X, shift.Y, shift.Z);
+        }
+    }
+
+    // Identify connected cloth that spans from a hip to a loose thigh panel. Isolated
+    // chains and sleeves should not cause a short jacket to acquire a coat drape.
+    internal static bool[]? LongPanels(BodyRetarget.Sets sets)
+    {
+        var nodes = sets.NodeAt;
+        bool IsHem(Vec3 p) => p.Y < .69f && (Math.Abs(p.X) > .175f || p.Z < -.155f);
+        if (!sets.ClothNodes.Any(i => IsHem(nodes[i]))) return null;
+        var available = new bool[nodes.Length];
+        foreach (int i in sets.ClothNodes)
+            available[i] = nodes[i].Y <= 1.14f && (nodes[i].Y < .92f || Math.Abs(nodes[i].X) < .32f);
+        bool[]? result = null;
+        var component = new List<int>();
+        foreach (int start in sets.ClothNodes)
+        {
+            if (!available[start]) continue;
+            component.Clear();
+            component.Add(start);
+            available[start] = false;
+            bool hem = false, hip = false;
+            float lowX = float.PositiveInfinity, highX = float.NegativeInfinity;
+            float lowZ = float.PositiveInfinity, highZ = float.NegativeInfinity;
+            for (int n = 0; n < component.Count; n++)
+            {
+                int i = component[n];
+                var p = nodes[i];
+                hip |= p.Y >= .86f;
+                if (IsHem(p))
+                {
+                    hem = true;
+                    lowX = Math.Min(lowX, p.X); highX = Math.Max(highX, p.X);
+                    lowZ = Math.Min(lowZ, p.Z); highZ = Math.Max(highZ, p.Z);
+                }
+                foreach (int j in sets.Adj[i])
+                {
+                    if (!available[j]) continue;
+                    available[j] = false;
+                    component.Add(j);
+                }
+            }
+            if (!hip || !hem || Math.Max(highX - lowX, highZ - lowZ) < .085f) continue;
+            result ??= new bool[nodes.Length];
+            foreach (int i in component) result[i] = true;
+        }
+        return result;
+    }
+
+    // The outer edges of loose panels, sampled on the original triangle edges. A small allowance
+    // for existing bow keeps the added hip clearance from rounding an already flared side seam.
+    private sealed class SideSeams
+    {
+        private const float Bottom = .45f, Step = .025f;
+        private const int Last = 18;
+        private readonly float[,] widths = new float[2, Last+1];
+
+        internal SideSeams(BodyRetarget.Sets sets, bool[] panels)
+        {
+            foreach (int i in sets.ClothNodes)
+            {
+                if (!panels[i]) continue;
+                foreach (int j in sets.Adj[i])
+                {
+                    if (j <= i || !panels[j]) continue;
+                    var a = sets.NodeAt[i]; var b = sets.NodeAt[j];
+                    if (a.Y > b.Y) (a,b) = (b,a);
+                    if (b.Y-a.Y < 1e-6f) continue;
+                    int first = Math.Max(0, (int)MathF.Ceiling((a.Y-Bottom)/Step));
+                    int end = Math.Min(Last, (int)MathF.Floor((b.Y-Bottom)/Step));
+                    for (int k = first; k <= end; k++)
+                    {
+                        float x = float.Lerp(a.X,b.X,(Bottom+k*Step-a.Y)/(b.Y-a.Y));
+                        int side = x < 0 ? 0 : 1;
+                        widths[side,k] = Math.Max(widths[side,k], Math.Abs(x));
+                    }
+                }
+            }
+        }
+
+        internal float Bow(Vector3 p)
+        {
+            int side = p.X < 0 ? 0 : 1;
+            float h = (p.Y-Bottom)/Step;
+            if (h <= 0 || h >= Last || widths[side,0] == 0 || widths[side,Last] == 0) return 0;
+            int k = (int)h;
+            float width = float.Lerp(widths[side,k], widths[side,k+1], h-k);
+            float line = float.Lerp(widths[side,0], widths[side,Last], h/Last);
+            return Math.Clamp(width-line,0,.006f) * Ramp((Math.Abs(p.X)-width+.05f)/.05f);
         }
     }
 
@@ -200,6 +304,42 @@ internal static class YabFitField
             }
             return grid;
         }
+        private float[]? hipGrowth;
+
+        internal Vector3 PanelShift(Vector3 p, Vector3 local, float strength, SideSeams seams)
+        {
+            if (p.Y >= 1.10f || strength == 0) return local;
+            if (hipGrowth == null)
+            {
+                hipGrowth = new float[Angles];
+                // A hanging panel spans both thighs. Use the change at the seat as
+                // its anchor and carry it down the panel without tracing each leg.
+                for (int a = 0; a < Angles; a++)
+                    for (int row = (int)((.82f-Bottom)/Step); row <= (int)((.94f-Bottom)/Step); row++)
+                        hipGrowth[a] = Math.Max(hipGrowth[a], Math.Clamp(shift[row,a], 0, .05f));
+            }
+            float radius = MathF.Sqrt(p.X*p.X + p.Z*p.Z);
+            if (radius < .001f) return local;
+            var direction = new Vector3(p.X/radius, 0, p.Z/radius);
+            float angle = (MathF.Atan2(p.X,p.Z)/MathF.Tau+1)%1*Angles;
+            int i = (int)angle % Angles;
+            float growth = float.Lerp(hipGrowth[i], hipGrowth[(i+1)%Angles], angle-(int)angle);
+            // Seat ease wraps around to the side seams, tailing off toward the front.
+            float rear = (hipGrowth[Angles/2-6] + hipGrowth[Angles/2] + hipGrowth[Angles/2+6])/3;
+            float ease = Math.Max(growth, rear * (.35f + .65f*Math.Max(0,-direction.Z)) * (1-Math.Max(0,direction.Z)));
+            if (ease <= 0) return local;
+            float drop = Math.Clamp((p.Y-.30f)/.60f,0,1);
+            var drape = direction * (strength * drop * ease);
+            // Side seams clear the hip later in the fall than the broad back panel.
+            drape.X *= Ramp((p.Y-.59f)/.30f);
+            drape.X += strength * rear * direction.X * .55f * Ramp((p.Y-.76f)/.15f);
+            drape.X -= strength * Math.Sign(p.X) * Math.Min(ease, seams.Bow(p));
+            float back = Ramp(-direction.Z);
+            drape.Z -= strength * drop * Math.Min(.035f, 1.25f*rear) * back;
+            float blend = Ramp((1.10f-p.Y)/.16f) * Ramp((.32f-Math.Abs(p.X))/.06f);
+            return Vector3.Lerp(local, drape, blend);
+        }
+
         internal Vector3 Sample(Vector3 p)
         {
             float angle=(MathF.Atan2(p.X,p.Z)/MathF.Tau+1)%1*Angles;
