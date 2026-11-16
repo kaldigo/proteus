@@ -1384,6 +1384,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
         byte[] bytes = isVanilla ? g.VanillaBytes ?? [] : await File.ReadAllBytesAsync(r.Resolved!, ct);
         if (bytes.Length == 0) return;
 
+        byte[] originalModel = bytes;
         List<PenumbraModMeta.Redirect> redirects = isVanilla ? [] : PenumbraModMeta.ReadAllRedirects(r.ModRoot!);
         var ownRecord = isVanilla ? null : BodyRetargetWriter.ReadRecord(r.ModRoot!);
         var targetRaces = RefitCore.RacesOf(lead.Catalog);
@@ -1484,7 +1485,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         // ── what it was made on, and which other parts of that body it reaches ──
         var (source, otherFrom) = ReadSource(g, state, lead, vanillaCat, bytes, garment, bones, primary, race,
-                                             isVanilla, item);
+                                             isVanilla, item, IsHandmadeYab(r, g, redirects), target, originalModel);
         ct.ThrowIfCancellationRequested();
 
         if (mixedParts)
@@ -1583,7 +1584,7 @@ public sealed partial class AutoRefitWatcher : IDisposable
                                 string.Join(", ", off));
         }
 
-        r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, r.ModSettings?.Priority ?? 0) };
+        r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
         if (r.Output is { Layer: YabOutput.Base } && pick.Dir != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, lead, redirects, item) is not { } where) return;
@@ -2052,6 +2053,12 @@ public sealed partial class AutoRefitWatcher : IDisposable
          : g.Mods.TryGetValue(Path.GetFileName(root), out string? modName) && modName.Length > 0 ? modName
          : Path.GetFileName(root);
 
+    private static BodyModIndex.Entry? YabBody(BodyModIndex.State state, BodyModIndex.Entry lead)
+        => YabOutput.IsYab(lead.Name) ? lead : state.List.FirstOrDefault(b => YabOutput.IsYab(b.Name));
+
+    private static bool IsHandmadeYab(Request r, Gathered g, IEnumerable<PenumbraModMeta.Redirect> redirects)
+        => r.Worn.ModDir is { } dir && HandmadeYab.Declared(dir, g.Mods.GetValueOrDefault(dir), r.Worn.Rel, redirects);
+
     private static string InputVersion(Gathered g, Request r, string bodies, string source)
     {
         var options = new System.Text.StringBuilder(bodies);
@@ -2150,8 +2157,20 @@ public sealed partial class AutoRefitWatcher : IDisposable
     /// </summary>
     private (AutoRefitDecisions.Pick? Source, Dictionary<string, string> Others) ReadSource(
         Gathered g, BodyModIndex.State state, BodyModIndex.Entry targetMod, BodySizeCatalog vanillaCat, byte[] bytes,
-        ModelParts garment, IReadOnlySet<string> bones, string slot, string race, bool isVanilla, string item)
+        ModelParts garment, IReadOnlySet<string> bones, string slot, string race, bool isVanilla, string item,
+        bool handmadeYab = false, BodyOption? target = null, byte[]? original = null)
     {
+        // Resolve declared provenance before consulting the cross-body detection cache.
+        if (handmadeYab)
+        {
+            var body = YabBody(state, targetMod);
+            if (body == null) return (null, new());
+            var pick = HandmadeYab.Read(body, garment, bones, slot, race, target, original ?? bytes, out bool documented);
+            log.Information("[Proteus] auto refit: {0} is a handmade YAB+ fit; source size {1} ({2})", item,
+                            pick?.Option.Label ?? "undetermined", documented ? "author's size" : "mesh comparison");
+            return (pick, pick == null || documented ? new() : OtherParts(garment, slot, race, pick, body.Catalog,
+                (s, options) => BodySizeMatch.Rank(garment, options, body.Catalog.PathOf, bones)));
+        }
         BodySizeCatalog? CatalogOf(string dir) => dir == VanillaBodyCatalog.Key ? vanillaCat : state.Find(dir)?.Catalog;
         string cacheKey = SourceCacheKey(bytes, slot, race, targetMod.Dir,
                                          DetectionCache.BodiesOf(state.Version, EnabledBodies(g, state),

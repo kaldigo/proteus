@@ -180,6 +180,11 @@ public sealed partial class AutoRefitWatcher
             covered, slot => ReadOnto(slot)?.To, SiblingOf,
             slot => SourceBeneath(r, g, slot, state, ReadOnto(slot)!.Value.Body, vanilla, ReadOnto(slot)!.Value.To, Note),
             pick => CatalogOf(pick.Dir) is { } from && AccessoryCover.ClearsSource(garment, from.PathOf(pick.Option)));
+        if (IsHandmadeYab(r, g, redirects) && parts.Sources.Values.Any(p => !YabOutput.IsYab(NameIn(state, p.Dir))))
+        {
+            SayUnsure(item);
+            return;
+        }
         foreach (var (slot, pick) in parts.Sources)
             log.Information("[Proteus] auto refit: {0} {1} as {2}: made on {3} / {4} ({5})", item, r.Slot, slot,
                             NameIn(state, pick.Dir), pick.Option.Label, pick.Confidence);
@@ -405,7 +410,10 @@ public sealed partial class AutoRefitWatcher
                                                 is not { } opened)
                     return (null, false);
                 var (pick, _) = ReadSource(g, state, targetMod, vanilla[race], opened.Bytes, opened.Model, opened.Bones,
-                                           slot, race, false, $"the {SlotName(slot)} beneath");
+                                           slot, race, false, $"the {SlotName(slot)} beneath",
+                                           beside.ModRoot != null && HandmadeYab.Declared(Path.GetFileName(beside.ModRoot),
+                                               g.Mods.GetValueOrDefault(Path.GetFileName(beside.ModRoot)), beside.Worn.Rel,
+                                               PenumbraModMeta.ReadAllRedirects(beside.ModRoot)), chosen);
                 return (pick, pick != null && AutoRefitDecisions.SameFile(pick.Dir, pick.Option, targetMod.Dir, chosen));
             },
             (dir, sourceRel) => CatalogOf(dir)?.For(slot, race)

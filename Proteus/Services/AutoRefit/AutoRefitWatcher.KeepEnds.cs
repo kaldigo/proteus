@@ -137,7 +137,7 @@ public sealed partial class AutoRefitWatcher
         // A skin-only redraw is drawn like the hands' or feet's own body, and saved under it.
         var savedFor = decision is KeepEnds.SkinOnly ? j.Targets.Body(reading.Slot) ?? lead : lead;
         var sourceBody = decision is KeepEnds.Refit sizedFrom ? sizedFrom.Source.Dir : ((KeepEnds.SkinOnly)decision).Own.Dir;
-        r = r with { Output = YabOutput.For(config, InputVersion(g, r, j.State.Version, sourceBody), savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, r.ModSettings?.Priority ?? 0) };
+        r = r with { Output = YabOutput.For(config, InputVersion(g, r, j.State.Version, sourceBody), savedFor.Name, NameIn(j.State, sourceBody), r.Worn.GamePath, j.Bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
         if (r.Output is { Layer: YabOutput.Base } && sourceBody != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, savedFor, j.Redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
@@ -229,7 +229,8 @@ public sealed partial class AutoRefitWatcher
         siblings = SiblingPiece.Applies(j.R.ModRoot, j.Route.To) && j.R.Worn.Rel is { } wornRel
             ? SiblingPiece.Find(j.Redirects, j.OwnRecord, wornRel, reading.Limb, j.Race, Note)
             : [];
-        string suffix = SiblingPiece.CacheSuffix(siblings, file => Stamp(j.R.ModRoot!, file));
+        bool handmade = IsHandmadeYab(j.R, g, j.Redirects);
+        string suffix = (siblings.Count > 0 ? "|source-family-v1|" : "") + (handmade ? "|handmade-yab-v1|" + j.TargetFor(reading.Limb)?.Rel : "") + SiblingPiece.CacheSuffix(siblings, file => Stamp(j.R.ModRoot!, file));
         string cacheKey = DetectionCache.KeyOf(j.Bytes, reading.CacheSlot + suffix, j.Race, j.Lead.Dir,
                                                DetectionCache.BodiesOf(j.State.Version, EnabledBodies(g, j.State),
                                                                        VanillaPrint(j.VanillaCat, reading.Limb, j.Race) + "|"
@@ -247,6 +248,8 @@ public sealed partial class AutoRefitWatcher
         var found = KeepEnds.Find(reading, j.Garment, j.Bones, j.Race,
                                   (view, s) => isVanilla
                                       ? VanillaSource(j.VanillaCat, s, j.Race)
+                                      : handmade ? YabBody(j.State, j.Lead) is { } body
+                                          ? HandmadeYab.Read(body, view, j.Bones, s, j.Race, j.TargetFor(s), j.Bytes, out _) : null
                                       : DetectAcross(view, j.Bones, s, j.Race, j.Lead, j.State.List, j.VanillaCat,
                                                      g.Permanent),
                                   catalogOf, sibling: sibling,
@@ -276,7 +279,8 @@ public sealed partial class AutoRefitWatcher
             if (SiblingPiece.TryOpen(root, c.File, note) is not { } opened) return null;
             var (bytes, model, bones) = opened;
             return ReadSource(j.G, j.State, j.Lead, j.VanillaCat, bytes, model, bones, slot, race, false,
-                              j.Item + " (" + SiblingPiece.Shown(c.Source) + ")").Source;
+                              j.Item + " (" + SiblingPiece.Shown(c.Source) + ")", HandmadeYab.Declared(Path.GetFileName(root),
+                                  j.G.Mods.GetValueOrDefault(Path.GetFileName(root)), c.File, j.Redirects), j.TargetFor(slot)).Source;
         }, note);
     }
 

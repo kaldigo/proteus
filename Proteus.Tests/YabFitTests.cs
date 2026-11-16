@@ -10,6 +10,45 @@ namespace Proteus.Tests;
 
 public class YabFitTests
 {
+    [Theory]
+    [InlineData("Refits - YAB - Lunar Envoy", "Chest / Everything", "files/0.mdl", true)]
+    [InlineData("Refits - YAB - Test (+Rue!)", "Chest / Rue Medium", "files/0.mdl", false)]
+    [InlineData("Refits - YAB - Test (+Rue!)", "Chest / YAB Medium", "files/0.mdl", true)]
+    [InlineData("Refits - YAB - Test (+Rue!)", "Chest / Everything", "files/0.mdl", false)]
+    [InlineData("Proteus Fit c0201e0771_top Base refits", "Fit / YAB", "files/0.mdl", false)]
+    public void Handmade_source_follows_the_specific_redirect(string dir, string label, string rel, bool expected)
+        => Assert.Equal(expected, HandmadeYab.Declared(dir, dir, rel, [new("game.mdl", rel, label)]));
+
+    private sealed class LunarLibraryFactAttribute : FactAttribute
+    {
+        public LunarLibraryFactAttribute()
+        {
+            if (Environment.GetEnvironmentVariable("PROTEUS_TEST_LUNAR_LIBRARY") == null)
+                Skip = "Requires the local handmade Lunar Envoy mesh and YAB+ catalog.";
+        }
+    }
+
+    [LunarLibraryFact]
+    public void Verified_Lunar_fit_uses_authored_medium_and_preserves_equivalent_physics_variant()
+    {
+        var root = Environment.GetEnvironmentVariable("PROTEUS_TEST_LUNAR_LIBRARY");
+
+        string bodyDir = "Yet Another Body+";
+        var cat = BodySizeCatalog.Read(Path.Combine(root!, bodyDir));
+        var body = new BodyModIndex.Entry(bodyDir, bodyDir, cat);
+        var coat = SiblingPiece.TryOpen(Path.Combine(root!, "Refits - YAB - Lunar Envoy's Justaucorps - YAB+"), "files/0.mdl")!.Value;
+        var options = cat.For("_top", "0201");
+        foreach (string name in new[] { "Yiggle - Medium", "Yiggle - Large" })
+        {
+            var target = options.First(o => o.Name == name);
+            var pick = HandmadeYab.Read(body, coat.Model, coat.Bones, "_top", "0201", target, coat.Bytes, out bool documented);
+            Assert.True(documented);
+            Assert.NotNull(pick);
+            Assert.True(HandmadeYab.Medium(pick.Option));
+            Assert.Equal(name == "Yiggle - Medium", AutoRefitDecisions.SameFile(bodyDir, pick.Option, bodyDir, target));
+        }
+    }
+
     [Fact]
     public void Source_check_peels_stacked_refits_and_remembers_a_disappearing_racial_path()
     {
