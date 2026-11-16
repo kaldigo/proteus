@@ -15,6 +15,9 @@ public class YabFitTests
     [InlineData("Refits - YAB - Test (+Rue!)", "Chest / Rue Medium", "files/0.mdl", false)]
     [InlineData("Refits - YAB - Test (+Rue!)", "Chest / YAB Medium", "files/0.mdl", true)]
     [InlineData("Refits - YAB - Test (+Rue!)", "Chest / Everything", "files/0.mdl", false)]
+    [InlineData("Refits - YAB - Test (+Rue!)", "Chest / Rue Medium", "YAB/models/0.mdl", false)]
+    [InlineData("Refits - YAB - Test", "Chest / Everything", "files/Rue_Medium.mdl", false)]
+    [InlineData("Refits - YAB - Test (+Rue!)", "Chest / YAB_Medium", "files/0.mdl", true)]
     [InlineData("Proteus Fit c0201e0771_top Base refits", "Fit / YAB", "files/0.mdl", false)]
     public void Handmade_source_follows_the_specific_redirect(string dir, string label, string rel, bool expected)
         => Assert.Equal(expected, HandmadeYab.Declared(dir, dir, rel, [new("game.mdl", rel, label)]));
@@ -47,6 +50,16 @@ public class YabFitTests
             Assert.True(HandmadeYab.Medium(pick.Option));
             Assert.Equal(name == "Yiggle - Medium", AutoRefitDecisions.SameFile(bodyDir, pick.Option, bodyDir, target));
         }
+    }
+
+    [Fact]
+    public void Higher_priority_source_only_suppresses_the_base_output()
+    {
+        var baseFit = new YabOutput("model", YabOutput.Base, 0, "key");
+        Assert.True(baseFit.HiddenBySource(4));
+        Assert.False(baseFit.HiddenBySource(null));
+        Assert.False(baseFit.HiddenBySource(-1));
+        Assert.False((baseFit with { Layer = YabOutput.Resize, Priority = 7 }).HiddenBySource(4));
     }
 
     [Fact]

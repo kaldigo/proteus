@@ -12,8 +12,8 @@ internal static class HandmadeYab
     // Pin the verified converted female model. Another edit to the same item must be measured again.
     internal const string LunarMedium = "9D9887EC3F1E9E36E0A193344417B7BD105844B8D4D77DA658BCEA21D0A912EE";
 
-    private static bool Yab(string text) => Regex.IsMatch(text, @"\b(?:YAB\b|Yet Another Body\b)", RegexOptions.IgnoreCase);
-    private static bool Other(string text) => Regex.IsMatch(text,
+    private static bool Yab(string text) => Regex.IsMatch(text.Replace('_', ' '), @"\b(?:YAB\b|Yet Another Body\b)", RegexOptions.IgnoreCase);
+    private static bool Other(string text) => Regex.IsMatch(text.Replace('_', ' '),
         @"\b(?:rue|ruexb|bibo|tre|tbse|uranus|lava(?:bod)?|mini|neolithe)\b", RegexOptions.IgnoreCase);
 
     internal static bool Declared(string? dir, string? name, string? file,
@@ -25,10 +25,10 @@ internal static class HandmadeYab
                               .Select(r => r.Source).Distinct().ToArray();
         if (labels.Length == 0) return false;
         // Mixed packs often label the option or the local file themselves.
-        if (Other(file)) return false;
+        if (Other(file) || labels.Any(Other)) return false;
         if (Yab(file)) return true;
         if (labels.All(s => Yab(s) && !Other(s))) return true;
-        return Yab(title) && !Other(title) && !labels.Any(Other);
+        return Yab(title) && !Other(title);
     }
 
     internal static bool Medium(BodyOption option)
@@ -42,8 +42,10 @@ internal static class HandmadeYab
         documented = slot == "_top" && Convert.ToHexString(SHA256.HashData(original)) == LunarMedium;
         if (documented)
         {
-            var medium = target != null && options.Contains(target) && Medium(target) ? target
-                : options.FirstOrDefault(o => o.Name.Equals("Medium", StringComparison.OrdinalIgnoreCase));
+            var medium = options.FirstOrDefault(o => o.Name.Equals("Medium", StringComparison.OrdinalIgnoreCase));
+            if (medium != null && target != null && options.Contains(target) && Medium(target)
+                && BodySizeMatch.SameRestingSkin(body.Catalog.PathOf(medium), body.Catalog.PathOf(target)))
+                medium = target;
             return medium == null ? null : new(body.Dir, medium, BodySizeMatch.Confidence.Exact, false);
         }
 

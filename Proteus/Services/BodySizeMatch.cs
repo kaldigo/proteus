@@ -279,6 +279,9 @@ internal static class BodySizeMatch
     internal static bool ClothClears(ModelParts garment, string bodyPath)
         => ClothAgainst(garment, bodyPath) is not { } on || on.Near < MinEvidence || on.Inside <= on.Near * ClearsBelow;
 
+    internal static bool SameRestingSkin(string first, string second)
+        => Load(first) is { } a && Load(second) is { } b && a.Snap.Count > 0 && a.Snap.SetEquals(b.Snap);
+
     /// <summary>Points of the garment at which two bodies must part (by more than <see cref="Discriminates"/>) before
     /// they are two shapes where it is: a few stray ones are a seam vertex nudged between exports, not a size.</summary>
     internal const int DifferAtLeast = 10;

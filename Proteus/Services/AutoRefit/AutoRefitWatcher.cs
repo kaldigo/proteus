@@ -1586,6 +1586,11 @@ public sealed partial class AutoRefitWatcher : IDisposable
 
         r = r with { Output = YabOutput.For(config, InputVersion(g, r, state.Version, pick.Dir), lead.Name, sourceName, r.Worn.GamePath, bytes, SettingsOf(g.Settings, r.Worn.ModDir)?.Priority ?? r.ModSettings?.Priority ?? 0) };
         // ── where it goes ──
+        if (r.Output?.HiddenBySource(SettingsOf(g.Settings, r.Worn.ModDir)?.Priority) == true)
+        {
+            log.Information("[Proteus] auto refit: {0} takes priority over the generated base fit; keeping the source", item);
+            return;
+        }
         if (r.Output is { Layer: YabOutput.Base } && pick.Dir != VanillaBodyCatalog.Key && !config.FitOtherBodies) return;
         if (WhereItGoes(r, g, lead, redirects, item) is not { } where) return;
         var (root, group, cutFrom) = where;
